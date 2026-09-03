@@ -15,6 +15,11 @@
 // under the License.
 
 // Command server runs the WSO2 Wallet backend HTTP service.
+//
+// Allow X.509 certificates with negative serial numbers so JWKS documents that
+// embed such certs (e.g. Asgardeo's) still parse under Go 1.23+.
+//
+//go:debug x509negativeserial=1
 package main
 
 import (
