@@ -23,7 +23,9 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
+	"github.com/MicahParks/jwkset"
 	"github.com/MicahParks/keyfunc/v3"
 	"github.com/golang-jwt/jwt/v5"
 
@@ -32,6 +34,9 @@ import (
 )
 
 const (
+	// jwksRefreshInterval is how often the JWK Set is re-fetched in the background.
+	jwksRefreshInterval = time.Hour
+
 	assertionHeader = "X-Jwt-Assertion"
 	healthPath      = "/health"
 )
@@ -88,9 +93,31 @@ func NewVerifier(ctx context.Context, cfg config.JWTConfig) (*Verifier, error) {
 		}
 		return &Verifier{}, nil
 	}
-	jwks, err := keyfunc.NewDefaultCtx(ctx, []string{cfg.JWKSURL})
+	// SkipAll disables jwkset's JWK validation. Asgardeo publishes x5t#S256 as
+	// base64url of the hex digest rather than of the raw bytes, so the thumbprint
+	// check rejects its only key and leaves the set empty. Signatures are still
+	// verified: the RSA key is built from n/e, which is byte-identical to the one
+	// inside x5c.
+	store, err := jwkset.NewStorageFromHTTP(cfg.JWKSURL, jwkset.HTTPClientStorageOptions{
+		Ctx:             ctx,
+		RefreshInterval: jwksRefreshInterval,
+		ValidateOptions: jwkset.JWKValidateOptions{SkipAll: true},
+	})
 	if err != nil {
 		return nil, fmt.Errorf("load JWKS from %s: %w", cfg.JWKSURL, err)
+	}
+	// An empty set verifies nothing, and every request would 401 while the service
+	// still looked healthy. Fail to start instead.
+	keys, err := store.KeyReadAll(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("read JWKS from %s: %w", cfg.JWKSURL, err)
+	}
+	if len(keys) == 0 {
+		return nil, fmt.Errorf("JWKS at %s contained no usable keys", cfg.JWKSURL)
+	}
+	jwks, err := keyfunc.New(keyfunc.Options{Storage: store})
+	if err != nil {
+		return nil, fmt.Errorf("build key function from %s: %w", cfg.JWKSURL, err)
 	}
 	return &Verifier{
 		keyfunc:  jwks.Keyfunc,
