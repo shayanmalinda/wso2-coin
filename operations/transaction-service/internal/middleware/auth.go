@@ -21,11 +21,15 @@ package middleware
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
+	"github.com/MicahParks/jwkset"
 	"github.com/MicahParks/keyfunc/v3"
 	"github.com/golang-jwt/jwt/v5"
+	"golang.org/x/time/rate"
 
 	"github.com/wso2/wso2-coin/operations/transaction-service/internal/config"
 	"github.com/wso2/wso2-coin/operations/transaction-service/internal/response"
@@ -34,6 +38,10 @@ import (
 const (
 	assertionHeader = "X-Jwt-Assertion"
 	healthPath      = "/health"
+
+	jwksHTTPTimeout     = 15 * time.Second
+	jwksRefreshInterval = time.Hour
+	clockSkewLeeway     = time.Minute
 )
 
 var signingMethods = []string{
@@ -92,16 +100,59 @@ func NewVerifier(ctx context.Context, cfg config.JWTConfig) (*Verifier, error) {
 		}
 		return &Verifier{}, nil
 	}
-	jwks, err := keyfunc.NewDefaultCtx(ctx, []string{cfg.JWKSURL})
+	kf, err := newKeyfunc(ctx, cfg.JWKSURL)
 	if err != nil {
 		return nil, fmt.Errorf("load JWKS from %s: %w", cfg.JWKSURL, err)
 	}
 	return &Verifier{
-		keyfunc:  jwks.Keyfunc,
+		keyfunc:  kf,
 		verified: true,
 		issuer:   cfg.Issuer,
 		audience: cfg.Audience,
 	}, nil
+}
+
+// newKeyfunc loads the JWKS at jwksURL into an hourly-refreshing key store and returns
+// its key lookup. It differs from keyfunc.NewDefaultCtx in two deliberate ways. The
+// first fetch must succeed and yield at least one key, so a wrong URL or an
+// unparseable document fails at startup instead of leaving an empty key set that
+// rejects every token as unverifiable. And JWK metadata validation is skipped: some
+// issuers (Asgardeo) publish x5t#S256 as hex rather than base64url, which the strict
+// validator treats as fatal for the whole set. Signatures are still verified against
+// the published key material, so authentication strength is unchanged.
+func newKeyfunc(ctx context.Context, jwksURL string) (jwt.Keyfunc, error) {
+	storage, err := jwkset.NewStorageFromHTTP(jwksURL, jwkset.HTTPClientStorageOptions{
+		Ctx:             ctx,
+		HTTPTimeout:     jwksHTTPTimeout,
+		RefreshInterval: jwksRefreshInterval,
+		ValidateOptions: jwkset.JWKValidateOptions{SkipAll: true},
+		RefreshErrorHandler: func(ctx context.Context, err error) {
+			slog.ErrorContext(ctx, "jwks refresh failed", "url", jwksURL, "err", err)
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	keys, err := storage.KeyReadAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(keys) == 0 {
+		return nil, fmt.Errorf("jwks contains no keys")
+	}
+	client, err := jwkset.NewHTTPClient(jwkset.HTTPClientOptions{
+		HTTPURLs:          map[string]jwkset.Storage{jwksURL: storage},
+		RateLimitWaitMax:  time.Minute,
+		RefreshUnknownKID: rate.NewLimiter(rate.Every(5*time.Minute), 1),
+	})
+	if err != nil {
+		return nil, err
+	}
+	kf, err := keyfunc.New(keyfunc.Options{Ctx: ctx, Storage: client})
+	if err != nil {
+		return nil, err
+	}
+	return kf.Keyfunc, nil
 }
 
 // Verified reports whether tokens are signature-verified.
@@ -128,6 +179,10 @@ func (v *Verifier) parse(token string) (*jwtClaims, error) {
 	opts := []jwt.ParserOption{
 		jwt.WithValidMethods(signingMethods),
 		jwt.WithExpirationRequired(),
+		// Tolerate small clock differences between the issuer and this host: a
+		// freshly minted token is not rejected as "not valid yet", and a token is
+		// accepted up to the same margin past its expiry.
+		jwt.WithLeeway(clockSkewLeeway),
 	}
 	if v.issuer != "" {
 		opts = append(opts, jwt.WithIssuer(v.issuer))
