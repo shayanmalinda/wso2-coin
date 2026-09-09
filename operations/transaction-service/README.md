@@ -53,7 +53,7 @@ go run ./cmd/server
 | `GET` | `/wallets` | List all wallets (address, default flag, created) | — |
 | `GET` | `/wallets/addresses` | List all distinct wallet addresses | — |
 | `GET` | `/wallets/master/balance` | Caller's master wallet balance | required |
-| `POST` | `/wallets/master/transfer` | Transfer from the caller's master wallet | required |
+| `POST` | `/wallets/master/transfer` | Transfer from the caller's master wallet; optional `reference` is the idempotency key (replay → 200, mismatch → 409) | required |
 | `GET` | `/wallets/{address}/balance` | Any wallet's balance | — |
 | `POST` | `/transactions/search` | Browse and filter transactions | — |
 | `GET` | `/transactions/{reference}` | Get a single transaction | — |

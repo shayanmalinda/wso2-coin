@@ -206,11 +206,15 @@ func newFixture(t *testing.T) (*crypto.Encryptor, *fakeRepo, *Service) {
 func TestTransfer(t *testing.T) {
 	enc, repo, svc := newFixture(t)
 
-	res, err := svc.Transfer(context.Background(), "client-1",
+	result, err := svc.Transfer(context.Background(), "client-1",
 		model.TransferRequest{ToAddress: "0xuser", Amount: "12"})
 	if err != nil {
 		t.Fatalf("Transfer: %v", err)
 	}
+	if result.Idempotent {
+		t.Error("a first transfer must not be reported as idempotent")
+	}
+	res := result.Response
 	if res.FromAddress != "0xmaster" || res.ToAddress != "0xuser" {
 		t.Errorf("transfer endpoints = %s -> %s, want 0xmaster -> 0xuser", res.FromAddress, res.ToAddress)
 	}
@@ -229,6 +233,75 @@ func TestTransfer(t *testing.T) {
 	if len(repo.txns) != 1 || repo.txns[0].Reference != res.Reference {
 		t.Error("transfer transaction not recorded with the returned reference")
 	}
+	if repo.txns[0].Source != "" {
+		t.Errorf("source = %q, want empty when not supplied", repo.txns[0].Source)
+	}
+}
+
+func TestTransferWithCallerReference(t *testing.T) {
+	enc, repo, svc := newFixture(t)
+
+	result, err := svc.Transfer(context.Background(), "client-1",
+		model.TransferRequest{ToAddress: "0xuser", Amount: "12", Reference: "QR-7d3f", Source: "CONFERENCE"})
+	if err != nil {
+		t.Fatalf("Transfer: %v", err)
+	}
+	if result.Idempotent {
+		t.Error("a first transfer must not be reported as idempotent")
+	}
+	if result.Response.Reference != "QR-7d3f" {
+		t.Errorf("reference = %q, want the caller-supplied QR-7d3f", result.Response.Reference)
+	}
+	if len(repo.txns) != 1 || repo.txns[0].Reference != "QR-7d3f" || repo.txns[0].Source != "CONFERENCE" {
+		t.Errorf("recorded txns = %+v, want one with reference QR-7d3f and source CONFERENCE", repo.txns)
+	}
+	if got := balanceOf(t, enc, repo, "0xmaster"); got != "88.000000000" {
+		t.Errorf("sender balance = %q, want 88.000000000", got)
+	}
+}
+
+func TestTransferIdempotentReplay(t *testing.T) {
+	enc, repo, svc := newFixture(t)
+	repo.byRef = map[string]*TxnRow{}
+	seedExistingTxn(t, enc, repo, "QR-7d3f", "0xmaster", "0xuser", "12")
+
+	result, err := svc.Transfer(context.Background(), "client-1",
+		model.TransferRequest{ToAddress: "0xuser", Amount: "12", Reference: "QR-7d3f"})
+	if err != nil {
+		t.Fatalf("Transfer: %v", err)
+	}
+	if !result.Idempotent {
+		t.Error("retry of an identical reference should be idempotent")
+	}
+	if result.Response.Amount != "12.000000000" || result.Response.ToAddress != "0xuser" {
+		t.Errorf("replayed response = %+v", result.Response)
+	}
+	// Balances must not move and no second transaction may be recorded.
+	if got := balanceOf(t, enc, repo, "0xmaster"); got != "100.000000000" {
+		t.Errorf("sender balance moved on replay: %q", got)
+	}
+	if got := balanceOf(t, enc, repo, "0xuser"); got != "5.000000000" {
+		t.Errorf("recipient balance moved on replay: %q", got)
+	}
+	if len(repo.txns) != 0 {
+		t.Errorf("replay inserted %d new transactions, want 0", len(repo.txns))
+	}
+}
+
+func TestTransferReferenceConflict(t *testing.T) {
+	enc, repo, svc := newFixture(t)
+	repo.byRef = map[string]*TxnRow{}
+	// Same reference already used, but for a different amount.
+	seedExistingTxn(t, enc, repo, "QR-7d3f", "0xmaster", "0xuser", "99")
+
+	_, err := svc.Transfer(context.Background(), "client-1",
+		model.TransferRequest{ToAddress: "0xuser", Amount: "12", Reference: "QR-7d3f"})
+	if !errors.Is(err, ErrReferenceConflict) {
+		t.Fatalf("Transfer error = %v, want ErrReferenceConflict", err)
+	}
+	if got := balanceOf(t, enc, repo, "0xmaster"); got != "100.000000000" {
+		t.Errorf("sender balance moved on conflict: %q", got)
+	}
 }
 
 func TestTransferErrors(t *testing.T) {
@@ -244,6 +317,8 @@ func TestTransferErrors(t *testing.T) {
 		{"self transfer", "client-1", model.TransferRequest{ToAddress: "0xmaster", Amount: "1"}, ErrSelfTransfer},
 		{"invalid amount", "client-1", model.TransferRequest{ToAddress: "0xuser", Amount: "abc"}, ErrInvalidAmount},
 		{"zero amount", "client-1", model.TransferRequest{ToAddress: "0xuser", Amount: "0"}, ErrInvalidAmount},
+		{"invalid reference", "client-1", model.TransferRequest{ToAddress: "0xuser", Amount: "1", Reference: "bad ref!"}, ErrInvalidReference},
+		{"invalid source", "client-1", model.TransferRequest{ToAddress: "0xuser", Amount: "1", Source: "conference"}, ErrInvalidSource},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

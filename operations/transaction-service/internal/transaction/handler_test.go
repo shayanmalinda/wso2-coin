@@ -280,3 +280,78 @@ func TestHandlerSearchRejectsTooManyAddresses(t *testing.T) {
 		t.Fatalf("status = %d, want 400", rec.Code)
 	}
 }
+
+// doTransfer issues a POST /wallets/master/transfer as the mapped service client.
+func doTransfer(t *testing.T, repo *fakeRepo, body model.TransferRequest) *httptest.ResponseRecorder {
+	t.Helper()
+	payload, err := json.Marshal(body)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/wallets/master/transfer", bytes.NewReader(payload))
+	req = req.WithContext(middleware.WithClientID(req.Context(), "client-1"))
+	rec := httptest.NewRecorder()
+	newTestMux(t, repo).ServeHTTP(rec, req)
+	return rec
+}
+
+func newTransferRepo(t *testing.T) *fakeRepo {
+	t.Helper()
+	enc := newEnc(t)
+	repo := &fakeRepo{masters: map[string]string{"client-1": "0xmaster"}, byRef: map[string]*TxnRow{}}
+	seedWallet(t, enc, repo, "0xmaster", "100")
+	seedWallet(t, enc, repo, "0xuser", "5")
+	return repo
+}
+
+func TestHandlerTransferCreatedWithCallerReference(t *testing.T) {
+	repo := newTransferRepo(t)
+
+	rec := doTransfer(t, repo, model.TransferRequest{ToAddress: "0xuser", Amount: "12", Reference: "QR-7d3f", Source: "CONFERENCE"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201; body = %s", rec.Code, rec.Body.String())
+	}
+	if loc := rec.Header().Get("Location"); loc != "/transactions/QR-7d3f" {
+		t.Errorf("Location = %q, want /transactions/QR-7d3f", loc)
+	}
+	var res model.TransferResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if res.Reference != "QR-7d3f" || res.Amount != "12.000000000" {
+		t.Errorf("response = %+v", res)
+	}
+}
+
+func TestHandlerTransferIdempotentReplay(t *testing.T) {
+	repo := newTransferRepo(t)
+	seedExistingTxn(t, newEnc(t), repo, "QR-7d3f", "0xmaster", "0xuser", "12")
+
+	rec := doTransfer(t, repo, model.TransferRequest{ToAddress: "0xuser", Amount: "12", Reference: "QR-7d3f"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (idempotent replay); body = %s", rec.Code, rec.Body.String())
+	}
+	if loc := rec.Header().Get("Location"); loc != "" {
+		t.Errorf("Location = %q, want empty on idempotent replay", loc)
+	}
+}
+
+func TestHandlerTransferReferenceConflict(t *testing.T) {
+	repo := newTransferRepo(t)
+	seedExistingTxn(t, newEnc(t), repo, "QR-7d3f", "0xmaster", "0xuser", "99")
+
+	rec := doTransfer(t, repo, model.TransferRequest{ToAddress: "0xuser", Amount: "12", Reference: "QR-7d3f"})
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409", rec.Code)
+	}
+}
+
+func TestHandlerTransferInvalidReference(t *testing.T) {
+	rec := doTransfer(t, newTransferRepo(t), model.TransferRequest{ToAddress: "0xuser", Amount: "12", Reference: "bad ref!"})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "Invalid reference.") {
+		t.Errorf("body = %s, want invalid-reference message", rec.Body.String())
+	}
+}

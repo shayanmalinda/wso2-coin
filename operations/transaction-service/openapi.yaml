@@ -83,6 +83,12 @@ paths:
   /wallets/master/transfer:
     post:
       summary: Transfer from the caller's master wallet
+      description: |
+        Moves coins from the caller's master wallet to an existing wallet. A caller-supplied
+        `reference` acts as the idempotency key: retrying with the same reference and identical
+        details replays the recorded transaction (200) instead of moving coins again, while the
+        same reference with different details is rejected (409). Without a reference the service
+        generates one and every call is a new transfer.
       requestBody:
         required: true
         content:
@@ -101,11 +107,19 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TransferResponse"
+        "200":
+          description: Idempotent replay of a transfer already recorded under the same reference
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransferResponse"
         "400":
           $ref: "#/components/responses/Error"
         "401":
           $ref: "#/components/responses/Error"
         "403":
+          $ref: "#/components/responses/Error"
+        "409":
           $ref: "#/components/responses/Error"
         "413":
           $ref: "#/components/responses/Error"
@@ -282,6 +296,15 @@ components:
         amount:
           type: string
           description: Decimal amount as a string
+        reference:
+          type: string
+          maxLength: 66
+          description: >-
+            Optional caller-supplied idempotency key; matches ^[A-Za-z0-9][A-Za-z0-9._:-]{0,65}$.
+            When omitted the service generates a 0x + 64 hex reference.
+        source:
+          type: string
+          description: Optional uppercase source token; matches ^[A-Z][A-Z0-9_]{1,31}$
     TransferResponse:
       type: object
       properties:
@@ -311,8 +334,8 @@ components:
           type: string
           maxLength: 66
           description: >-
-            Caller-supplied idempotency key. Matches ^[A-Za-z0-9][A-Za-z0-9._:-]{0,65}$
-            and must not be shaped like a service-generated reference (0x + 64 hex).
+            Caller-supplied idempotency key. Matches ^[A-Za-z0-9][A-Za-z0-9._:-]{0,65}$;
+            the 0x + 64 hex shape used by service-generated references is also accepted.
         source:
           type: string
           description: Uppercase source token; matches ^[A-Z][A-Z0-9_]{1,31}$

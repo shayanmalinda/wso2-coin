@@ -90,41 +90,76 @@ func (s *Service) MasterBalance(ctx context.Context, clientID string) (model.Bal
 	return s.walletBalance(ctx, address)
 }
 
+// TransferResult is the outcome of a master-wallet transfer. Idempotent is true when the
+// caller-supplied reference already existed with matching details and the original
+// transaction was replayed instead of moving coins again.
+type TransferResult struct {
+	Response   model.TransferResponse
+	Idempotent bool
+}
+
 // Transfer moves coins from the caller's master wallet to an existing recipient
-// atomically and returns a reference for the recorded transaction.
-func (s *Service) Transfer(ctx context.Context, clientID string, req model.TransferRequest) (model.TransferResponse, error) {
+// atomically and returns a reference for the recorded transaction. A caller-supplied
+// reference is validated and used as the idempotency key; otherwise one is generated.
+func (s *Service) Transfer(ctx context.Context, clientID string, req model.TransferRequest) (TransferResult, error) {
+	if req.Reference != "" && !validReference(req.Reference) {
+		return TransferResult{}, ErrInvalidReference
+	}
+	if req.Source != "" && !validSource(req.Source) {
+		return TransferResult{}, ErrInvalidSource
+	}
 	from, err := s.masterAddress(ctx, clientID)
 	if err != nil {
-		return model.TransferResponse{}, err
+		return TransferResult{}, err
 	}
 	amount, err := money.ParseUnits(req.Amount)
 	if err != nil || amount.Sign() <= 0 {
-		return model.TransferResponse{}, ErrInvalidAmount
+		return TransferResult{}, ErrInvalidAmount
 	}
 	if strings.EqualFold(from, req.ToAddress) {
-		return model.TransferResponse{}, ErrSelfTransfer
+		return TransferResult{}, ErrSelfTransfer
 	}
 	to, err := s.repo.WalletByAddress(ctx, req.ToAddress)
 	if err != nil {
-		return model.TransferResponse{}, err
+		return TransferResult{}, err
 	}
 	if to == nil {
 		slog.WarnContext(ctx, "transfer recipient wallet not found", "recipient", req.ToAddress)
-		return model.TransferResponse{}, ErrRecipientNotFound
+		return TransferResult{}, ErrRecipientNotFound
 	}
 
-	ref, err := newReference()
+	ref := req.Reference
+	if ref == "" {
+		if ref, err = newReference(); err != nil {
+			return TransferResult{}, err
+		}
+	}
+	err = s.settle(ctx, from, to.Address, amount, ref, req.Source)
+	if err == nil {
+		return TransferResult{Response: model.TransferResponse{
+			Reference:   ref,
+			FromAddress: from,
+			ToAddress:   to.Address,
+			Amount:      money.FormatUnits(amount),
+		}}, nil
+	}
+	// Only a caller-supplied reference can legitimately collide; a generated one
+	// colliding is an internal fault and surfaces as such.
+	if req.Reference == "" || !errors.Is(err, ErrDuplicateReference) {
+		return TransferResult{}, err
+	}
+	existing, err := s.replay(ctx, ref, from, to.Address, amount)
 	if err != nil {
-		return model.TransferResponse{}, err
+		return TransferResult{}, err
 	}
-	if err := s.settle(ctx, from, to.Address, amount, ref, ""); err != nil {
-		return model.TransferResponse{}, err
-	}
-	return model.TransferResponse{
-		Reference:   ref,
-		FromAddress: from,
-		ToAddress:   to.Address,
-		Amount:      money.FormatUnits(amount),
+	return TransferResult{
+		Response: model.TransferResponse{
+			Reference:   ref,
+			FromAddress: existing.FromAddress,
+			ToAddress:   existing.ToAddress,
+			Amount:      money.FormatUnits(amount),
+		},
+		Idempotent: true,
 	}, nil
 }
 
@@ -185,41 +220,46 @@ func (s *Service) Pay(ctx context.Context, email string, req model.PaymentReques
 	if !errors.Is(err, ErrDuplicateReference) {
 		return PaymentResult{}, err
 	}
-	return s.replay(ctx, req.Reference, req.FromAddress, to.Address, amount)
-}
-
-// replay resolves a duplicate-reference insert: it returns the original transaction
-// as an idempotent success when from/to/amount match, or a conflict when they differ.
-func (s *Service) replay(ctx context.Context, reference, from, to string, amount *big.Int) (PaymentResult, error) {
-	existing, err := s.repo.TransactionByReference(ctx, reference)
+	existing, err := s.replay(ctx, req.Reference, req.FromAddress, to.Address, amount)
 	if err != nil {
 		return PaymentResult{}, err
 	}
-	if existing == nil {
-		return PaymentResult{}, ErrReferenceConflict
-	}
-	plainAmount, err := s.enc.Decrypt(existing.Amount, amountAADForRow(*existing))
-	if err != nil {
-		return PaymentResult{}, ErrIntegrity
-	}
-	existingUnits, err := money.ParseUnits(plainAmount)
-	if err != nil {
-		return PaymentResult{}, ErrIntegrity
-	}
-	if !strings.EqualFold(existing.FromAddress, from) ||
-		!strings.EqualFold(existing.ToAddress, to) ||
-		existingUnits.Cmp(amount) != 0 {
-		return PaymentResult{}, ErrReferenceConflict
-	}
 	return PaymentResult{
 		Response: model.PaymentResponse{
-			Reference:   reference,
+			Reference:   req.Reference,
 			FromAddress: existing.FromAddress,
 			ToAddress:   existing.ToAddress,
 			Amount:      money.FormatUnits(amount),
 		},
 		Idempotent: true,
 	}, nil
+}
+
+// replay resolves a duplicate-reference insert: it returns the recorded transaction
+// when its from/to/amount match the retried request (an idempotent success for the
+// caller), or ErrReferenceConflict when they differ.
+func (s *Service) replay(ctx context.Context, reference, from, to string, amount *big.Int) (*TxnRow, error) {
+	existing, err := s.repo.TransactionByReference(ctx, reference)
+	if err != nil {
+		return nil, err
+	}
+	if existing == nil {
+		return nil, ErrReferenceConflict
+	}
+	plainAmount, err := s.enc.Decrypt(existing.Amount, amountAADForRow(*existing))
+	if err != nil {
+		return nil, ErrIntegrity
+	}
+	existingUnits, err := money.ParseUnits(plainAmount)
+	if err != nil {
+		return nil, ErrIntegrity
+	}
+	if !strings.EqualFold(existing.FromAddress, from) ||
+		!strings.EqualFold(existing.ToAddress, to) ||
+		existingUnits.Cmp(amount) != 0 {
+		return nil, ErrReferenceConflict
+	}
+	return existing, nil
 }
 
 // settle performs the atomic locked debit, credit and transaction insert for a

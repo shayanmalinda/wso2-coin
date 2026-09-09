@@ -114,8 +114,20 @@ func (h *Handler) transfer(w http.ResponseWriter, r *http.Request) {
 		writeServiceError(r.Context(), w, err)
 		return
 	}
-	w.Header().Set("Location", "/transactions/"+res.Reference)
-	response.WriteJSON(w, http.StatusCreated, res)
+	// Audit line: balances are deliberately never logged.
+	slog.InfoContext(r.Context(), "transfer recorded",
+		"clientId", clientID,
+		"toAddress", res.Response.ToAddress,
+		"amount", res.Response.Amount,
+		"reference", res.Response.Reference,
+		"source", req.Source,
+		"idempotent", res.Idempotent)
+	if res.Idempotent {
+		response.WriteJSON(w, http.StatusOK, res.Response)
+		return
+	}
+	w.Header().Set("Location", "/transactions/"+res.Response.Reference)
+	response.WriteJSON(w, http.StatusCreated, res.Response)
 }
 
 // payments collects a coin payment from a user-owned wallet into a treasury wallet

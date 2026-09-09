@@ -38,10 +38,15 @@ type UserWallet struct {
 	DefaultWallet bool   `json:"defaultWallet"`
 }
 
-// TransferRequest is the body of a transfer from the caller's master wallet.
+// TransferRequest is the body of a transfer from the caller's master wallet. Reference
+// and source are optional: a caller-supplied reference is the idempotency key for the
+// transfer (a retry with identical details replays the recorded transaction instead of
+// moving coins again); when omitted the service generates one.
 type TransferRequest struct {
 	ToAddress string `json:"toAddress"`
 	Amount    string `json:"amount"`
+	Reference string `json:"reference,omitempty"`
+	Source    string `json:"source,omitempty"`
 }
 
 // TransferResponse is returned after a successful transfer.
