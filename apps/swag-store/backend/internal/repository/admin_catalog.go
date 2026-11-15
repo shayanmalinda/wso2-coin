@@ -651,6 +651,36 @@ func (s *Store) SaveCategory(ctx context.Context, a Actor, c Category) (*Categor
 	return &c, nil
 }
 
+// UpdateCategory edits a category. patch gets the category as it is under the
+// row lock and changes it in place, so two edits of different fields never
+// undo each other. An error from patch is returned as it is and nothing is
+// written. patch may run again when the transaction is retried.
+func (s *Store) UpdateCategory(ctx context.Context, a Actor, id string, patch func(*Category) error) (*Category, error) {
+	var c Category
+	err := s.inTx(ctx, func(q *store.Queries) error {
+		row, err := q.LockCategory(ctx, id)
+		if err != nil {
+			return notFound(err)
+		}
+		c = Category{ID: row.ID, Slug: row.Slug, Name: row.Name, Sort: int(row.Sort)}
+		if err := patch(&c); err != nil {
+			return err
+		}
+		_, err = q.UpdateCategory(ctx, store.UpdateCategoryParams{Slug: c.Slug, Name: c.Name, Sort: int32(c.Sort), ID: id}) // #nosec G115
+		if isDuplicate(err) {
+			return ErrConflict
+		}
+		if err != nil {
+			return err
+		}
+		return audit(ctx, q, a, "category_updated", "category", id, map[string]any{"slug": c.Slug})
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
 // Category returns one category, or ErrNotFound.
 func (s *Store) Category(ctx context.Context, id string) (*Category, error) {
 	c, err := s.q.GetCategory(ctx, id)

@@ -30,6 +30,7 @@ type fakeCatalog struct {
 	cards    []repository.ProductCard
 	detail   *repository.ProductDetail
 	searches int
+	during   func() // runs inside SearchProducts, while the read is in flight
 }
 
 func (f *fakeCatalog) ActiveCategories(context.Context) ([]repository.Category, error) {
@@ -38,6 +39,9 @@ func (f *fakeCatalog) ActiveCategories(context.Context) ([]repository.Category, 
 
 func (f *fakeCatalog) SearchProducts(context.Context, repository.ProductQuery) ([]repository.ProductCard, int, error) {
 	f.searches++
+	if f.during != nil {
+		f.during()
+	}
 	return f.cards, len(f.cards), nil
 }
 
@@ -46,6 +50,29 @@ func (f *fakeCatalog) ProductBySlug(_ context.Context, slug string) (*repository
 		return nil, nil
 	}
 	return f.detail, nil
+}
+
+// A list read that started before a Clear must not be cached: it may hold a
+// product that the admin change behind the Clear just removed.
+func TestProductListReadDuringAClearIsNotCached(t *testing.T) {
+	cache := NewListCache()
+	f := &fakeCatalog{cards: []repository.ProductCard{{ID: "p1", Slug: "hoodie", Name: "WSO2 Hoodie", Price: 90, MaxFree: 9}}}
+	f.during = cache.Clear // an admin change lands while the list is read
+	h := NewCatalogHandler(f, cache, 5)
+	r := testRouter(shopper, http.MethodGet, "/products", h.Products)
+
+	if rec := do(r, http.MethodGet, "/products", ""); rec.Code != http.StatusOK {
+		t.Fatalf("list = %d %s", rec.Code, rec.Body)
+	}
+	f.during = nil
+	do(r, http.MethodGet, "/products", "")
+	if f.searches != 2 {
+		t.Fatalf("the read from before the change was cached: %d searches, want 2", f.searches)
+	}
+	do(r, http.MethodGet, "/products", "")
+	if f.searches != 2 {
+		t.Fatalf("a read after the change was not cached: %d searches, want 2", f.searches)
+	}
 }
 
 func TestProductListCachedAndCleared(t *testing.T) {

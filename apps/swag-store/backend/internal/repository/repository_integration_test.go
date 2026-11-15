@@ -19,6 +19,9 @@ package repository_test
 import (
 	"context"
 	"errors"
+	"slices"
+	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -410,6 +413,82 @@ func TestSetOptionsKeepsSKUs(t *testing.T) {
 	}
 }
 
+// A replacement shows only the options and values it names; the variants of
+// dropped values stay readable, inactive, with their labels.
+func TestSetOptionsShowsOnlyTheCurrentDefinition(t *testing.T) {
+	f := newFixture(t, 0)
+	ctx := context.Background()
+	opt := func(name string, vals ...string) repository.OptionInput {
+		in := repository.OptionInput{Name: name}
+		for _, v := range vals {
+			in.Values = append(in.Values, repository.OptionValueInput{Value: v})
+		}
+		return in
+	}
+	definition := func(d *repository.ProductDetail) string {
+		var parts []string
+		for _, o := range d.Options {
+			var vals []string
+			for _, v := range o.Values {
+				vals = append(vals, v.Value)
+			}
+			parts = append(parts, o.Name+"="+strings.Join(vals, ","))
+		}
+		return strings.Join(parts, " ")
+	}
+	labels := func(d *repository.ProductDetail) (active, inactive []string) {
+		for _, v := range d.Variants {
+			if v.Active {
+				active = append(active, v.Options)
+			} else {
+				inactive = append(inactive, v.Options)
+			}
+		}
+		sort.Strings(active)
+		sort.Strings(inactive)
+		return active, inactive
+	}
+
+	if _, err := f.s.SetOptions(ctx, admin, f.productID, []repository.OptionInput{opt("Size", "M", "L")}); err != nil {
+		t.Fatal(err)
+	}
+	d, err := f.s.SetOptions(ctx, admin, f.productID, []repository.OptionInput{opt("Size", "M")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := definition(d); got != "Size=M" {
+		t.Errorf("after dropping L, options = %q, want Size=M", got)
+	}
+	if active, inactive := labels(d); strings.Join(active, ";") != "M" || !slices.Contains(inactive, "L") {
+		t.Errorf("variants active %v inactive %v, want M active and L kept inactive", active, inactive)
+	}
+	read, err := f.s.ProductByID(ctx, f.productID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := definition(read); got != "Size=M" {
+		t.Errorf("read back, options = %q, want Size=M", got)
+	}
+
+	d, err = f.s.SetOptions(ctx, admin, f.productID, []repository.OptionInput{opt("Colour", "Black"), opt("Size", "M")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := definition(d); got != "Colour=Black Size=M" {
+		t.Errorf("after adding Colour, options = %q", got)
+	}
+	d, err = f.s.SetOptions(ctx, admin, f.productID, []repository.OptionInput{opt("Size", "M", "L")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := definition(d); got != "Size=M,L" {
+		t.Errorf("after dropping Colour and adding L back, options = %q, want Size=M,L", got)
+	}
+	if active, _ := labels(d); strings.Join(active, ";") != "L;M" {
+		t.Errorf("active variants = %v, want L and M", active)
+	}
+}
+
 // An audit row without detail (category_deleted, order_note_added) must read
 // back as detail null, not fail the whole audit page.
 func TestAuditEventWithoutDetailReads(t *testing.T) {
@@ -442,19 +521,19 @@ func TestAuditEventWithoutDetailReads(t *testing.T) {
 func TestUpdateProductPatchesTheLockedRow(t *testing.T) {
 	f := newFixture(t, 0)
 	ctx := context.Background()
-	holding, release := make(chan struct{}), make(chan struct{})
+	holding, release := make(chan struct{}), newGate(t)
 	var once sync.Once
 	first := make(chan error, 1)
 	go func() {
 		_, err := f.s.UpdateProduct(ctx, admin, f.productID, func(in *repository.ProductInput) error {
 			in.Price = 95
 			once.Do(func() { close(holding) })
-			<-release
+			<-release.c
 			return nil
 		})
 		first <- err
 	}()
-	<-holding
+	waitForCallback(t, holding, first)
 	second := make(chan error, 1)
 	var seenPrice int64
 	go func() {
@@ -466,7 +545,7 @@ func TestUpdateProductPatchesTheLockedRow(t *testing.T) {
 		second <- err
 	}()
 	time.Sleep(200 * time.Millisecond) // the second edit is now waiting for the row lock
-	close(release)
+	release.open()
 	if err := <-first; err != nil {
 		t.Fatal(err)
 	}
@@ -479,6 +558,108 @@ func TestUpdateProductPatchesTheLockedRow(t *testing.T) {
 	}
 	if seenPrice != 95 || d.Product.Price != 95 || d.Product.Name != "WSO2 Hoodie v2" {
 		t.Fatalf("second patch saw price %d; product = %q at %d, want both edits", seenPrice, d.Product.Name, d.Product.Price)
+	}
+}
+
+// gate holds a patch callback until open is called. The test's cleanup opens
+// it too, so a failed test never leaves the callback blocked.
+type gate struct {
+	c    chan struct{}
+	once sync.Once
+}
+
+func newGate(t *testing.T) *gate {
+	g := &gate{c: make(chan struct{})}
+	t.Cleanup(g.open)
+	return g
+}
+
+func (g *gate) open() { g.once.Do(func() { close(g.c) }) }
+
+// waitForCallback waits until the first edit's patch callback holds the row.
+// It fails the test when the edit ends before its callback runs (a lock or
+// read error) or nothing happens within 10 seconds.
+func waitForCallback(t *testing.T, holding <-chan struct{}, first <-chan error) {
+	t.Helper()
+	select {
+	case <-holding:
+	case err := <-first:
+		t.Fatalf("the first edit ended before its patch ran: %v", err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("the first edit's patch never ran")
+	}
+}
+
+// Two edits of different category fields must not undo each other.
+func TestUpdateCategoryPatchesTheLockedRow(t *testing.T) {
+	s := repository.New(testdb.Open(t))
+	ctx := context.Background()
+	c, err := s.SaveCategory(ctx, admin, repository.Category{Slug: "drinkware", Name: "Drinkware", Sort: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	holding, release := make(chan struct{}), newGate(t)
+	var once sync.Once
+	first := make(chan error, 1)
+	go func() {
+		_, err := s.UpdateCategory(ctx, admin, c.ID, func(cat *repository.Category) error {
+			cat.Name = "Cups and bottles"
+			once.Do(func() { close(holding) })
+			<-release.c
+			return nil
+		})
+		first <- err
+	}()
+	waitForCallback(t, holding, first)
+	second := make(chan error, 1)
+	var seenName string
+	go func() {
+		_, err := s.UpdateCategory(ctx, admin, c.ID, func(cat *repository.Category) error {
+			seenName = cat.Name
+			cat.Sort = 7
+			return nil
+		})
+		second <- err
+	}()
+	time.Sleep(200 * time.Millisecond) // the second edit is now waiting for the row lock
+	release.open()
+	if err := <-first; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-second; err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Category(ctx, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if seenName != "Cups and bottles" || got.Name != "Cups and bottles" || got.Sort != 7 {
+		t.Fatalf("second patch saw %q; category = %+v, want both edits", seenName, got)
+	}
+}
+
+func TestUpdateCategoryErrors(t *testing.T) {
+	s := repository.New(testdb.Open(t))
+	ctx := context.Background()
+	invalid := errors.New("invalid")
+	a, err := s.SaveCategory(ctx, admin, repository.Category{Slug: "apparel", Name: "Apparel"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SaveCategory(ctx, admin, repository.Category{Slug: "tech", Name: "Tech"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.UpdateCategory(ctx, admin, a.ID, func(c *repository.Category) error { c.Name = "X"; return invalid }); !errors.Is(err, invalid) {
+		t.Errorf("patch error = %v, want it returned", err)
+	}
+	if _, err := s.UpdateCategory(ctx, admin, a.ID, func(c *repository.Category) error { c.Slug = "tech"; return nil }); !errors.Is(err, repository.ErrConflict) {
+		t.Errorf("duplicate slug = %v, want ErrConflict", err)
+	}
+	if _, err := s.UpdateCategory(ctx, admin, uuid.NewString(), func(*repository.Category) error { return nil }); !errors.Is(err, repository.ErrNotFound) {
+		t.Errorf("missing category = %v, want ErrNotFound", err)
+	}
+	if got, _ := s.Category(ctx, a.ID); got.Name != "Apparel" || got.Slug != "apparel" {
+		t.Errorf("a failed patch wrote %+v", got)
 	}
 }
 
