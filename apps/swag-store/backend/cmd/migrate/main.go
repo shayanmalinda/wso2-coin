@@ -21,9 +21,13 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
@@ -65,7 +69,8 @@ func run() error {
 }
 
 // migrationDSN reads DATABASE_URL, or DB_HOST, DB_PORT, DB_USER, DB_PASSWORD
-// and DB_NAME, and enables multi-statement files.
+// and DB_NAME (plus DB_TLS and DB_CA_CERT as the server reads them), and
+// enables multi-statement files.
 func migrationDSN() (string, error) {
 	var mc *mysql.Config
 	if raw := os.Getenv("DATABASE_URL"); raw != "" {
@@ -88,6 +93,17 @@ func migrationDSN() (string, error) {
 		if os.Getenv("DB_TLS") != "false" {
 			mc.TLSConfig = "true"
 		}
+	}
+	// DB_CA_CERT is the private CA the server trusts (PEM, `\n` allowed).
+	if pem := os.Getenv("DB_CA_CERT"); pem != "" && os.Getenv("DB_TLS") != "false" {
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM([]byte(strings.ReplaceAll(pem, `\n`, "\n"))) {
+			return "", errors.New("DB_CA_CERT holds no PEM certificate")
+		}
+		if err := mysql.RegisterTLSConfig("swag", &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}); err != nil {
+			return "", fmt.Errorf("DB_CA_CERT: %w", err)
+		}
+		mc.TLSConfig = "swag"
 	}
 	mc.MultiStatements = true
 	mc.ParseTime = true
