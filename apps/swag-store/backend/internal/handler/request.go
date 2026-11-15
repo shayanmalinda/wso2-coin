@@ -65,7 +65,9 @@ func readJSON(c *gin.Context, dst any) bool {
 		writeError(c, http.StatusBadRequest, decodeMessage(err))
 		return false
 	}
-	if dec.More() {
+	// Only whitespace may follow the value: a second Decode must hit EOF.
+	// (More() would miss a stray ] or }.)
+	if err := dec.Decode(new(json.RawMessage)); !errors.Is(err, io.EOF) {
 		writeError(c, http.StatusBadRequest, ErrMsgBadRequest)
 		return false
 	}

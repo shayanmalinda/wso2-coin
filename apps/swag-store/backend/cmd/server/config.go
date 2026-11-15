@@ -226,6 +226,7 @@ func loadConfig(get func(string) string) (*Config, error) {
 		JobsEnabled:        !strings.EqualFold(e.str("JOBS_ENABLED"), "false"),
 		JWKSEndpoint:       e.must("AUTH_JWKS_ENDPOINT"),
 	}
+	e.secureURL("AUTH_JWKS_ENDPOINT", c.JWKSEndpoint)
 	c.Auth = middleware.AuthConfig{
 		Issuer:           e.must("AUTH_ISSUER"),
 		Audiences:        splitComma(e.must("AUTH_AUDIENCE")),
@@ -301,6 +302,7 @@ func loadConfig(get func(string) string) (*Config, error) {
 			"HR_ENTITY_BASE_URL":           c.HR.BaseURL,
 			"EMAIL_BASE_URL":               c.Email.BaseURL,
 			"OAUTH2_TOKEN_URL":             c.OAuth2TokenURL,
+			"HR_ENTITY_TOKEN_URL":          c.HR.TokenURL,
 		} {
 			if u != "" && !httpsec.IsLoopbackURL(u) {
 				e.errs = append(e.errs, fmt.Errorf("AUTH_TOKEN_VALIDATOR_ENABLED=false is allowed only when every upstream is loopback; %s is not", name))

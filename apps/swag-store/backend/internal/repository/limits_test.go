@@ -17,8 +17,12 @@
 package repository
 
 import (
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
+
+	"github.com/wso2/wso2-coin/apps/swag-store/backend/internal/store"
 )
 
 func TestLimitSinceNeverZeroDate(t *testing.T) {
@@ -29,5 +33,36 @@ func TestLimitSinceNeverZeroDate(t *testing.T) {
 	days := 30
 	if got := limitSince(now, &days); !got.Equal(now.AddDate(0, 0, -30)) {
 		t.Fatalf("30-day window = %v", got)
+	}
+}
+
+func TestTruncateKeepsWholeCharacters(t *testing.T) {
+	reason := strings.Repeat("a", 255) + "é and more" // é is two bytes: bytes 255 and 256
+	got := truncate(reason, 256)
+	if !utf8.ValidString(got) {
+		t.Fatalf("cut inside a character: %q", got[250:])
+	}
+	if got != strings.Repeat("a", 255) {
+		t.Fatalf("got %d bytes, want the 255 before the split character", len(got))
+	}
+	if truncate("short", 256) != "short" {
+		t.Fatal("short reason changed")
+	}
+}
+
+func TestStockOrderSortsByVariant(t *testing.T) {
+	lines := []store.OrderLine{
+		{ID: "l1", Name: "Hoodie", VariantID: "v-b"},
+		{ID: "l2", Name: "Hoodie", VariantID: "v-a"},
+		{ID: "l3", Name: "Bag", VariantID: "v-c"},
+	}
+	got := stockOrder(lines)
+	for i, want := range []string{"v-a", "v-b", "v-c"} {
+		if got[i].VariantID != want {
+			t.Fatalf("lock order = %v, want variant id order", got)
+		}
+	}
+	if lines[0].ID != "l1" {
+		t.Fatal("stockOrder changed the caller's slice")
 	}
 }

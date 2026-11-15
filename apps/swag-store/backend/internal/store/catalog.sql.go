@@ -844,6 +844,23 @@ func (q *Queries) ListVariantsByProduct(ctx context.Context, productID string) (
 	return items, nil
 }
 
+const lockCategory = `-- name: LockCategory :one
+SELECT id, slug, name, sort, created_at FROM swag_categories WHERE id = ? FOR UPDATE
+`
+
+func (q *Queries) LockCategory(ctx context.Context, id string) (Category, error) {
+	row := q.db.QueryRowContext(ctx, lockCategory, id)
+	var i Category
+	err := row.Scan(
+		&i.ID,
+		&i.Slug,
+		&i.Name,
+		&i.Sort,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const lockProduct = `-- name: LockProduct :one
 SELECT id, slug, name, description, category_id, price_coins, restock_policy, max_per_user, limit_window_days, status, published_at, removed_at, removed_by, removal_note, created_at, updated_at FROM swag_products WHERE id = ? FOR UPDATE
 `

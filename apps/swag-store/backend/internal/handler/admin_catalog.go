@@ -49,6 +49,7 @@ type AdminCatalogStore interface {
 	Categories(ctx context.Context) ([]repository.Category, error)
 	Category(ctx context.Context, id string) (*repository.Category, error)
 	SaveCategory(ctx context.Context, a repository.Actor, c repository.Category) (*repository.Category, error)
+	UpdateCategory(ctx context.Context, a repository.Actor, id string, patch func(*repository.Category) error) (*repository.Category, error)
 	DeleteCategory(ctx context.Context, a repository.Actor, id string) error
 	Demand(ctx context.Context) ([]repository.DemandRow, error)
 	RecordPhotoUpload(ctx context.Context, a repository.Actor, productID string, d repository.PhotoUploadDetail) error
@@ -721,16 +722,15 @@ func (h *AdminCatalogHandler) PatchCategory(c *gin.Context) {
 	if !readJSON(c, &b) {
 		return
 	}
-	cur, err := h.store.Category(c.Request.Context(), id)
-	if err != nil {
-		h.writeStoreError(c, "admin categories: read failed", err)
+	var invalid error
+	saved, err := h.store.UpdateCategory(c.Request.Context(), actorOf(c), id, func(cur *repository.Category) error {
+		invalid = b.apply(cur)
+		return invalid
+	})
+	if invalid != nil {
+		writeError(c, http.StatusBadRequest, invalid.Error())
 		return
 	}
-	if err := b.apply(cur); err != nil {
-		writeError(c, http.StatusBadRequest, err.Error())
-		return
-	}
-	saved, err := h.store.SaveCategory(c.Request.Context(), actorOf(c), *cur)
 	if err != nil {
 		h.writeStoreError(c, "admin categories: update failed", err)
 		return

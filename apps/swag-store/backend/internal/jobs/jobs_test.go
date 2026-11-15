@@ -48,12 +48,16 @@ func TestLastScheduled(t *testing.T) {
 }
 
 type fakeLocks struct {
-	locked bool
-	state  repository.JobState
-	saved  []repository.JobState
+	locked  bool
+	lockErr error // the lock could not be asked for
+	state   repository.JobState
+	saved   []repository.JobState
 }
 
 func (f *fakeLocks) WithJobLock(ctx context.Context, _ string, fn func(context.Context) error) (bool, error) {
+	if f.lockErr != nil {
+		return false, f.lockErr
+	}
 	if f.locked {
 		return false, nil
 	}
@@ -101,6 +105,29 @@ func TestRunnerTickLockAndDaily(t *testing.T) {
 	r.tick(context.Background(), failing)
 	if locks.state.Status != "failed" {
 		t.Fatalf("failed run recorded as %q", locks.state.Status)
+	}
+}
+
+// A lock that cannot be asked for (no connection, GET_LOCK failed) is a
+// failed run and is logged; a lock held by another replica is a quiet skip.
+func TestRunnerTickLogsLockErrors(t *testing.T) {
+	var logs bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	defer slog.SetDefault(prev)
+
+	job := Job{Name: "outbox", Every: time.Second, Run: func(context.Context, repository.JobState) (string, error) {
+		t.Fatal("ran without the lock")
+		return "", nil
+	}}
+	NewRunner(&fakeLocks{locked: true}).tick(context.Background(), job)
+	if logs.Len() != 0 {
+		t.Fatalf("a held lock was logged: %s", logs.String())
+	}
+	NewRunner(&fakeLocks{lockErr: errors.New("connection refused")}).tick(context.Background(), job)
+	if got := logs.String(); !strings.Contains(got, "job_run") || !strings.Contains(got, "job=outbox") ||
+		!strings.Contains(got, "status=failed") || !strings.Contains(got, "connection refused") {
+		t.Errorf("lock error not logged as a failed run: %q", got)
 	}
 }
 

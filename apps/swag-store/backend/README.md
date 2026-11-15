@@ -54,7 +54,8 @@ Requires Go 1.27.4 (the toolchain downloads it) and MySQL 8.4.
 
 ```bash
 cp .env.example .env
-docker run -d --name swag-mysql -e MYSQL_ROOT_PASSWORD=pw -e MYSQL_DATABASE=hris_swag_store -p 3306:3306 mysql:8.4
+docker run -d --name swag-mysql -e MYSQL_ROOT_PASSWORD=pw -e MYSQL_DATABASE=hris_swag_store \
+  -e MYSQL_USER=swag -e MYSQL_PASSWORD=change-me -p 3306:3306 mysql:8.4   # the user and password .env.example uses
 DATABASE_URL='root:pw@tcp(127.0.0.1:3306)/hris_swag_store' make migrate
 DATABASE_URL='root:pw@tcp(127.0.0.1:3306)/hris_swag_store' make seed
 make fakes            # in another terminal: fakes on 127.0.0.1:8081
@@ -86,7 +87,7 @@ container and **Storage Blob Delegator** on the account; no key or SAS is config
 
 ### Postman
 
-`postman/collections/Swag Store API` is a Postman v3 collection that covers every route (51 requests).
+`postman/collections/Swag Store API` is a Postman v3 collection that covers every route (53 requests).
 Use it with the `Swag Store local` environment in `postman/environments`. With `mintLocalToken=true` and
 an empty `jwtAssertion`, the collection builds an unsigned token from `userEmail`, `userId` and
 `userGroups`, so it works only against a store started with `AUTH_TOKEN_VALIDATOR_ENABLED=false`.
@@ -100,6 +101,7 @@ postman collection lint "postman/collections/Swag Store API"
 ```
 
 When a route changes, update `openapi.yaml` and the matching request file.
+`.postman/` is git-ignored: linking the folder to a Postman workspace writes your own workspace id there.
 
 | Command | What it does |
 |---|---|

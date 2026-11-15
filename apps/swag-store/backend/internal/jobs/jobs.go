@@ -147,7 +147,7 @@ func (r *Runner) tick(ctx context.Context, j Job) {
 			slog.ErrorContext(ctx, "job_run", "job", j.Name, "status", "failed", "panic", p)
 		}
 	}()
-	ran, err := r.store.WithJobLock(ctx, j.Name, func(ctx context.Context) error {
+	_, err := r.store.WithJobLock(ctx, j.Name, func(ctx context.Context) error {
 		st, err := r.store.GetJobState(ctx, j.Name)
 		if err != nil {
 			return err
@@ -168,12 +168,12 @@ func (r *Runner) tick(ctx context.Context, j Job) {
 		}
 		return r.store.SaveJobState(ctx, j.Name, next)
 	})
-	if errors.Is(err, errSkip) || !ran {
+	// (false, nil) is a lock held by another replica; (false, err) means the
+	// lock could not be asked for, which is a failed run.
+	if err == nil || errors.Is(err, errSkip) {
 		return
 	}
-	if err != nil {
-		slog.ErrorContext(ctx, "job_run", "job", j.Name, "status", "failed", "err", err)
-	}
+	slog.ErrorContext(ctx, "job_run", "job", j.Name, "status", "failed", "err", err)
 }
 
 var errSkip = errors.New("not due")

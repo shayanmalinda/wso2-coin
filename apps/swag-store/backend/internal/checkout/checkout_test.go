@@ -540,6 +540,19 @@ func TestReconcilePending(t *testing.T) {
 	}
 }
 
+func TestReconcileLostConfirmUsesLatePath(t *testing.T) {
+	r := newRig()
+	r.coins.tx = &coins.Transaction{Reference: orders.PaymentReference(orderUUID), ToAddress: pin, Amount: "180"}
+	o := &repository.Order{ID: orderUUID, Status: orders.PendingPayment, Total: 180,
+		PaymentReference: orders.PaymentReference(orderUUID), PlacedAt: time.Now()}
+	r.store.orders[orderUUID] = o
+	r.store.confirmLost = true // an earlier pass failed the order after the grace period
+	res, err := r.svc.ReconcilePending(context.Background(), o)
+	if err != nil || res != "confirmed" || len(r.store.late) != 1 {
+		t.Fatalf("lost confirm: %s %v, late confirms %v", res, err, r.store.late)
+	}
+}
+
 func TestPaidOrderFailedMeanwhileIsConfirmedLate(t *testing.T) {
 	r := newRig()
 	r.store.confirmLost = true // the reconciler failed the order while the payment was in flight

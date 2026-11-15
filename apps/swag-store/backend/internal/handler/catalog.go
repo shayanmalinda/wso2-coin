@@ -38,12 +38,15 @@ type CatalogReader interface {
 }
 
 // ListCache keeps product-list responses for 60 s. A product status change
-// clears it (backend-spec §8.5).
+// clears it (backend-spec §8.5). Each Clear starts a new generation, and a
+// list read in an older one is not kept, so a read that was in flight during
+// a change cannot bring back what the change removed.
 type ListCache struct {
 	ttl time.Duration
 	now func() time.Time
 	mu  sync.Mutex
 	m   map[string]listEntry
+	gen uint64
 }
 
 type listEntry struct {
@@ -56,19 +59,25 @@ func NewListCache() *ListCache {
 	return &ListCache{ttl: 60 * time.Second, now: time.Now, m: map[string]listEntry{}}
 }
 
-func (c *ListCache) get(key string) (any, bool) {
+// get returns the cached body, or the generation to pass to put after
+// reading the list.
+func (c *ListCache) get(key string) (body any, gen uint64, ok bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	e, ok := c.m[key]
 	if !ok || c.now().Sub(e.at) >= c.ttl {
-		return nil, false
+		return nil, c.gen, false
 	}
-	return e.body, true
+	return e.body, c.gen, true
 }
 
-func (c *ListCache) put(key string, body any) {
+// put keeps body unless the cache was cleared since generation gen.
+func (c *ListCache) put(key string, gen uint64, body any) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if gen != c.gen {
+		return
+	}
 	if len(c.m) > 500 {
 		c.m = map[string]listEntry{}
 	}
@@ -79,6 +88,7 @@ func (c *ListCache) put(key string, body any) {
 func (c *ListCache) Clear() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.gen++
 	c.m = map[string]listEntry{}
 }
 
@@ -161,8 +171,9 @@ func (h *CatalogHandler) Products(c *gin.Context) {
 	}
 	key := url.Values{"q": {q.Q}, "c": {q.CategorySlug}, "s": {sort}, "i": {strconv.FormatBool(inStock)},
 		"l": {strconv.Itoa(limit)}, "o": {strconv.Itoa(offset)}}.Encode()
-	if body, ok := h.cache.get(key); ok {
-		writeJSON(c, http.StatusOK, body)
+	cached, gen, ok := h.cache.get(key)
+	if ok {
+		writeJSON(c, http.StatusOK, cached)
 		return
 	}
 	cards, total, err := h.store.SearchProducts(c.Request.Context(), q)
@@ -174,7 +185,7 @@ func (h *CatalogHandler) Products(c *gin.Context) {
 	for _, p := range cards {
 		body.Items = append(body.Items, h.card(p))
 	}
-	h.cache.put(key, body)
+	h.cache.put(key, gen, body)
 	writeJSON(c, http.StatusOK, body)
 }
 

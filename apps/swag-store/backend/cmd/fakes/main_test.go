@@ -18,6 +18,8 @@ package main
 
 import (
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -102,5 +104,61 @@ func TestFakesRejectUnknownFields(t *testing.T) {
 	}, "")
 	if status != http.StatusOK {
 		t.Errorf("full client request = %d %s, want 200", status, body)
+	}
+}
+
+func TestReadJSONBodyRules(t *testing.T) {
+	const limit = 1 << 10
+	cases := []struct {
+		name, body string
+		ok         bool
+	}{
+		{"empty body keeps the zero value", "", true},
+		{"one object", `{"query":"q"}`, true},
+		{"trailing whitespace", "{\"query\":\"q\"}\n", true},
+		{"padding just inside the limit", strings.Repeat(" ", limit-2) + "{}", true},
+		{"padding past the limit", strings.Repeat(" ", limit) + "{}", false},
+		{"object past the limit", `{"query":"` + strings.Repeat("q", limit) + `"}`, false},
+		{"data after the object", `{"query":"q"} garbage`, false},
+		{"a second object", `{"query":"q"}{"query":"r"}`, false},
+		{"a stray bracket", `{"query":"q"}]`, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodPost, "/graphql", strings.NewReader(tc.body))
+			var v struct {
+				Query string `json:"query"`
+			}
+			err := readJSON(r, limit, &v)
+			if (err == nil) != tc.ok {
+				t.Errorf("readJSON(%.40q) error = %v, want ok=%v", tc.body, err, tc.ok)
+			}
+		})
+	}
+}
+
+func TestGraphQLRejectsTrailingData(t *testing.T) {
+	srv := newTestServer(t)
+	resp, err := srv.Client().Post(srv.URL+"/graphql", "application/json",
+		strings.NewReader(`{"query":"query { __typename }"} garbage`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", resp.StatusCode)
+	}
+}
+
+func TestSearchRejectsAnOversizedBody(t *testing.T) {
+	srv := newTestServer(t)
+	resp, err := srv.Client().Post(srv.URL+"/transactions/search", "application/json",
+		strings.NewReader(strings.Repeat(" ", 1<<20)+"{}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", resp.StatusCode)
 	}
 }

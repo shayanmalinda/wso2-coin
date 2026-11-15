@@ -32,9 +32,9 @@ import (
 // OfficeStore is the pickup-office persistence.
 type OfficeStore interface {
 	Offices(ctx context.Context, activeOnly bool) ([]repository.Office, error)
-	Office(ctx context.Context, id string) (*repository.Office, error)
 	DefaultOfficeID(ctx context.Context, email, location string) (string, error)
 	SaveOffice(ctx context.Context, a repository.Actor, o repository.Office) (*repository.Office, error)
+	PatchOffice(ctx context.Context, a repository.Actor, id string, patch func(*repository.Office) error) (*repository.Office, error)
 }
 
 // OfficesHandler serves pickup offices to shoppers and Fulfilment Ops.
@@ -184,25 +184,26 @@ func (h *OfficesHandler) Update(c *gin.Context) {
 	if !readJSON(c, &b) {
 		return
 	}
-	cur, err := h.store.Office(c.Request.Context(), id)
-	if err != nil {
-		writeInternal(c, "offices: read failed", err)
+	// The patch is applied to the row as locked inside the save, so a
+	// concurrent edit of another field is not undone.
+	var invalid error
+	saved, err := h.store.PatchOffice(c.Request.Context(), actorOf(c), id, func(o *repository.Office) error {
+		invalid = b.apply(o)
+		return invalid
+	})
+	if invalid != nil {
+		writeError(c, http.StatusBadRequest, invalid.Error())
 		return
 	}
-	if cur == nil {
-		writeError(c, http.StatusNotFound, ErrMsgNotFound)
-		return
-	}
-	o := *cur
-	if err := b.apply(&o); err != nil {
-		writeError(c, http.StatusBadRequest, err.Error())
-		return
-	}
-	h.save(c, o, http.StatusOK)
+	h.respond(c, saved, err, http.StatusOK)
 }
 
 func (h *OfficesHandler) save(c *gin.Context, o repository.Office, status int) {
 	saved, err := h.store.SaveOffice(c.Request.Context(), actorOf(c), o)
+	h.respond(c, saved, err, status)
+}
+
+func (h *OfficesHandler) respond(c *gin.Context, saved *repository.Office, err error, status int) {
 	switch {
 	case errors.Is(err, repository.ErrConflict):
 		writeErrorCode(c, http.StatusConflict, "An office with this name already exists.", CodeStateConflict)

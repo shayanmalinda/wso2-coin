@@ -293,19 +293,6 @@ func (s *Store) detail(ctx context.Context, q *store.Queries, p store.Product) (
 	if err != nil {
 		return nil, err
 	}
-	byOption := map[string][]OptionValue{}
-	valueName := map[string]string{}
-	for _, v := range vals {
-		byOption[v.OptionID] = append(byOption[v.OptionID], OptionValue{ID: v.ID, Value: v.Value, SwatchHex: v.SwatchHex.String, Sort: int(v.Sort)})
-		valueName[v.ID] = v.Value
-	}
-	optionOf := map[string]int{}
-	for i, o := range opts {
-		d.Options = append(d.Options, Option{ID: o.ID, Name: o.Name, Sort: int(o.Sort), Values: byOption[o.ID]})
-		for _, v := range byOption[o.ID] {
-			optionOf[v.ID] = i
-		}
-	}
 	links, err := q.ListVariantValuesByProduct(ctx, p.ID)
 	if err != nil {
 		return nil, err
@@ -317,6 +304,37 @@ func (s *Store) detail(ctx context.Context, q *store.Queries, p store.Product) (
 	variants, err := q.ListVariantsByProduct(ctx, p.ID)
 	if err != nil {
 		return nil, err
+	}
+	// SetOptions keeps the rows of dropped options and values, because old
+	// variants still point at them, and keeps exactly one active variant per
+	// combination it names. So the current definition is the values an active
+	// variant uses.
+	current := map[string]bool{}
+	for _, v := range variants {
+		if v.Active {
+			for _, id := range valuesOf[v.ID] {
+				current[id] = true
+			}
+		}
+	}
+	byOption := map[string][]OptionValue{}
+	valueName := map[string]string{}
+	optionOf := map[string]int{}
+	index := map[string]int{}
+	for i, o := range opts {
+		index[o.ID] = i
+	}
+	for _, v := range vals {
+		valueName[v.ID] = v.Value
+		optionOf[v.ID] = index[v.OptionID]
+		if current[v.ID] {
+			byOption[v.OptionID] = append(byOption[v.OptionID], OptionValue{ID: v.ID, Value: v.Value, SwatchHex: v.SwatchHex.String, Sort: int(v.Sort)})
+		}
+	}
+	for _, o := range opts {
+		if len(byOption[o.ID]) > 0 {
+			d.Options = append(d.Options, Option{ID: o.ID, Name: o.Name, Sort: int(o.Sort), Values: byOption[o.ID]})
+		}
 	}
 	for _, v := range variants {
 		ids := valuesOf[v.ID]

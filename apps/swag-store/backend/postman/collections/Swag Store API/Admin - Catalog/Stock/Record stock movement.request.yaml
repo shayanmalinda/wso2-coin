@@ -1,5 +1,5 @@
 $kind: http-request
-description: delta > 0 for RECEIVE; any sign for ADJUST; < 0 for WRITE_OFF. Receiving stock notifies pending alerts.
+description: delta 1 to 100,000 for RECEIVE and WRITE_OFF (a write-off subtracts it); any non-zero value up to 100,000 either way for ADJUST. Receiving stock notifies pending alerts.
 method: POST
 url: '{{baseUrl}}/admin/variants/:id/stock-movements'
 headers:

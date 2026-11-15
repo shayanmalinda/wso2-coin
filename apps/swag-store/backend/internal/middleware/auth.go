@@ -34,6 +34,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 
+	"github.com/wso2/wso2-coin/apps/swag-store/backend/internal/httpsec"
 	"github.com/wso2/wso2-coin/apps/swag-store/backend/internal/reqctx"
 )
 
@@ -87,16 +88,28 @@ func (l *stringList) UnmarshalJSON(b []byte) error {
 
 // NewJWKSKeyfunc loads the JWKS at endpoint through x5cStrippingTransport and
 // keeps it refreshed. It is called once at startup; an error is fatal there.
+// The config check makes endpoint https (or loopback http).
 func NewJWKSKeyfunc(ctx context.Context, endpoint string) (jwt.Keyfunc, error) {
-	client := &http.Client{
-		Timeout:   10 * time.Second,
-		Transport: &x5cStrippingTransport{base: http.DefaultTransport},
-	}
-	k, err := keyfunc.NewDefaultOverrideCtx(ctx, []string{endpoint}, keyfunc.Override{Client: client})
+	k, err := keyfunc.NewDefaultOverrideCtx(ctx, []string{endpoint}, keyfunc.Override{Client: jwksHTTPClient()})
 	if err != nil {
 		return nil, fmt.Errorf("load JWKS from %s: %w", endpoint, err)
 	}
 	return k.Keyfunc, nil
+}
+
+// jwksHTTPClient fetches signing keys. A redirect must stay on https (or
+// loopback http), so a redirect can't hand the keys to a plain-http host.
+func jwksHTTPClient() *http.Client {
+	return &http.Client{
+		Timeout:   10 * time.Second,
+		Transport: &x5cStrippingTransport{base: http.DefaultTransport},
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return errors.New("stopped after 10 redirects")
+			}
+			return httpsec.RequireSecureURL(req.URL.String())
+		},
+	}
 }
 
 // Auth validates x-jwt-assertion on every request except GET /health and
