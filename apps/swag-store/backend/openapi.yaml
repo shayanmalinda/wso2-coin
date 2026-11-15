@@ -417,6 +417,12 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/PlacedOrder"
+        "202":
+          description: "Payment still pending (timeout or upstream error); the reconciler settles it"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/PlacedOrder"
         "401":
           "$ref": "#/components/responses/Error"
         "402":

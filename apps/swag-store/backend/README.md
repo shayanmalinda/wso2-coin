@@ -54,7 +54,8 @@ Requires Go 1.27.4 (the toolchain downloads it) and MySQL 8.4.
 
 ```bash
 cp .env.example .env
-docker run -d --name swag-mysql -e MYSQL_ROOT_PASSWORD=pw -e MYSQL_DATABASE=hris_swag_store -p 3306:3306 mysql:8.4
+docker run -d --name swag-mysql -e MYSQL_ROOT_PASSWORD=pw -e MYSQL_DATABASE=hris_swag_store \
+  -e MYSQL_USER=swag -e MYSQL_PASSWORD=change-me -p 3306:3306 mysql:8.4   # the user and password .env.example uses
 DATABASE_URL='root:pw@tcp(127.0.0.1:3306)/hris_swag_store' make migrate
 DATABASE_URL='root:pw@tcp(127.0.0.1:3306)/hris_swag_store' make seed
 make fakes            # in another terminal: fakes on 127.0.0.1:8081

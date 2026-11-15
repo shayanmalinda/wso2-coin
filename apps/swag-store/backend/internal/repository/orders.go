@@ -21,6 +21,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -188,11 +189,7 @@ func (s *Store) ConfirmOrder(ctx context.Context, orderID string) (bool, error) 
 		if err := commitLines(ctx, q, o.OrderNo, lines); err != nil {
 			return err
 		}
-		ids := make([]string, 0, len(lines))
-		for _, l := range lines {
-			ids = append(ids, l.VariantID)
-		}
-		if err := q.DeleteCartLinesForVariants(ctx, store.DeleteCartLinesForVariantsParams{UserEmail: o.UserEmail, VariantIds: ids}); err != nil {
+		if err := q.DeleteCartLinesForVariants(ctx, store.DeleteCartLinesForVariantsParams{UserEmail: o.UserEmail, VariantIds: variantIDs(lines)}); err != nil {
 			return err
 		}
 		if err := event(ctx, q, orderID, orders.PendingPayment, orders.Confirmed, "", ""); err != nil {
@@ -207,8 +204,25 @@ func (s *Store) ConfirmOrder(ctx context.Context, orderID string) (bool, error) 
 	return done, err
 }
 
-func commitLines(ctx context.Context, q *store.Queries, ref string, lines []store.OrderLine) error {
+// stockOrder returns the lines in variant id order: the order
+// CreatePendingOrder reserves in. Every path that touches stock for an order
+// locks variants in this one order, so two settlements can't deadlock.
+func stockOrder(lines []store.OrderLine) []store.OrderLine {
+	out := slices.Clone(lines)
+	slices.SortFunc(out, func(a, b store.OrderLine) int { return strings.Compare(a.VariantID, b.VariantID) })
+	return out
+}
+
+func variantIDs(lines []store.OrderLine) []string {
+	ids := make([]string, 0, len(lines))
 	for _, l := range lines {
+		ids = append(ids, l.VariantID)
+	}
+	return ids
+}
+
+func commitLines(ctx context.Context, q *store.Queries, ref string, lines []store.OrderLine) error {
+	for _, l := range stockOrder(lines) {
 		n, err := q.CommitStock(ctx, store.CommitStockParams{Qty: l.Quantity, VariantID: l.VariantID})
 		if err != nil {
 			return err
@@ -241,7 +255,7 @@ func (s *Store) FailOrder(ctx context.Context, orderID string, f Failure) (bool,
 		if err != nil {
 			return err
 		}
-		for _, l := range lines {
+		for _, l := range stockOrder(lines) {
 			n, err := q.ReleaseStock(ctx, store.ReleaseStockParams{Qty: l.Quantity, VariantID: l.VariantID})
 			if err != nil {
 				return err
@@ -291,7 +305,7 @@ func (s *Store) ConfirmLatePayment(ctx context.Context, orderID string) error {
 		if err != nil {
 			return err
 		}
-		for _, l := range lines {
+		for _, l := range stockOrder(lines) {
 			n, err := q.ReserveStockLate(ctx, store.ReserveStockLateParams{Qty: l.Quantity, VariantID: l.VariantID})
 			if err != nil {
 				return err
@@ -310,6 +324,11 @@ func (s *Store) ConfirmLatePayment(ctx context.Context, orderID string) error {
 			return err
 		}
 		if err := commitLines(ctx, q, o.OrderNo, lines); err != nil {
+			return err
+		}
+		// The failure left the cart alone; the paid lines go now, as on a normal confirmation.
+		if err := q.DeleteCartLinesInOrder(ctx, store.DeleteCartLinesInOrderParams{UserEmail: o.UserEmail,
+			VariantIds: variantIDs(lines), OrderID: orderID}); err != nil {
 			return err
 		}
 		if err := event(ctx, q, orderID, orders.Failed, orders.Confirmed, "late payment found", ""); err != nil {

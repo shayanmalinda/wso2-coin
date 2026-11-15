@@ -30,6 +30,7 @@ import (
 
 	"github.com/wso2/wso2-coin/apps/swag-store/backend/internal/orders"
 	"github.com/wso2/wso2-coin/apps/swag-store/backend/internal/repository"
+	"github.com/wso2/wso2-coin/apps/swag-store/backend/internal/store"
 	"github.com/wso2/wso2-coin/apps/swag-store/backend/internal/testdb"
 )
 
@@ -200,6 +201,119 @@ func TestReconcilerConfirmsLatePaymentFlagsNoStock(t *testing.T) {
 	got, _ := f.s.OrderByID(ctx, o.ID)
 	if got.Status != orders.Failed || got.AttentionReason != "late_payment_no_stock" {
 		t.Fatalf("order = %+v", got)
+	}
+}
+
+func TestLateConfirmationClearsOrderedCartLines(t *testing.T) {
+	f := newFixture(t, 2)
+	ctx := context.Background()
+	o, _ := f.pendingOrder(t, "you@wso2.com", 1)
+	_, _ = f.s.FailOrder(ctx, o.ID, repository.Failure{Code: "payment_not_found"})
+	if err := f.s.ConfirmLatePayment(ctx, o.ID); err != nil {
+		t.Fatal(err)
+	}
+	if n, _ := f.s.CartItemCount(ctx, "you@wso2.com"); n != 0 {
+		t.Fatalf("cart still holds %d paid units", n)
+	}
+}
+
+func TestLateConfirmationKeepsLinesAddedAfterOrder(t *testing.T) {
+	f := newFixture(t, 3)
+	ctx := context.Background()
+	o, _ := f.pendingOrder(t, "you@wso2.com", 1)
+	_, _ = f.s.FailOrder(ctx, o.ID, repository.Failure{Code: "payment_not_found"})
+	items, err := f.s.CartForQuote(ctx, "you@wso2.com")
+	if err != nil || len(items) != 1 {
+		t.Fatalf("cart = %v %v", items, err)
+	}
+	if err := f.s.RemoveCartLine(ctx, "you@wso2.com", items[0].LineID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.s.AddToCart(ctx, "you@wso2.com", f.variantID, 2); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.s.ConfirmLatePayment(ctx, o.ID); err != nil {
+		t.Fatal(err)
+	}
+	if n, _ := f.s.CartItemCount(ctx, "you@wso2.com"); n != 2 {
+		t.Fatalf("cart = %d units, want the 2 added after the order", n)
+	}
+}
+
+func TestReminderClaimSkipsCollectedOrder(t *testing.T) {
+	f := newFixture(t, 2)
+	ctx := context.Background()
+	o, _ := f.pendingOrder(t, "you@wso2.com", 1)
+	_, _ = f.s.ConfirmOrder(ctx, o.ID)
+	for _, to := range []orders.Status{orders.ReadyForPickup, orders.Collected} {
+		if _, err := f.s.TransitionOrder(ctx, o.OrderNo, to, admin, ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The order was listed as READY_FOR_PICKUP, then collected before the claim.
+	n, err := store.New(f.s.DB()).MarkReminderSent(ctx, o.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatal("claimed a reminder for a collected order")
+	}
+}
+
+func TestPatchOfficeAppliesToCurrentRow(t *testing.T) {
+	f := newFixture(t, 0)
+	ctx := context.Background()
+	holding, release := make(chan struct{}), make(chan struct{})
+	first := make(chan error, 1)
+	go func() {
+		_, err := f.s.PatchOffice(ctx, admin, f.officeID, func(o *repository.Office) error {
+			close(holding)
+			<-release
+			o.Active = false
+			return nil
+		})
+		first <- err
+	}()
+	t.Cleanup(func() {
+		select {
+		case <-release:
+		default:
+			close(release)
+		}
+	})
+	select {
+	case <-holding:
+	case err := <-first:
+		t.Fatalf("first patch ended before its callback: %v", err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("first patch never started")
+	}
+	second := make(chan error, 1)
+	go func() {
+		_, err := f.s.PatchOffice(ctx, admin, f.officeID, func(o *repository.Office) error {
+			o.Hours = "9:00-17:00"
+			return nil
+		})
+		second <- err
+	}()
+	time.Sleep(200 * time.Millisecond) // the second patch now waits on the row lock
+	close(release)
+	for _, ch := range []chan error{first, second} {
+		select {
+		case err := <-ch:
+			if err != nil {
+				t.Fatal(err)
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatal("patch did not finish")
+		}
+	}
+	got, err := f.s.Office(ctx, f.officeID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Active || got.Hours != "9:00-17:00" {
+		t.Fatalf("office = active %v, hours %q; want both patches kept", got.Active, got.Hours)
 	}
 }
 

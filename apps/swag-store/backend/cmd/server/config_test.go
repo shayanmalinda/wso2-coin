@@ -112,6 +112,7 @@ func TestLoadConfigRejectsMalformed(t *testing.T) {
 		"bad tz":           {"STORE_TIMEZONE": "Mars/Base"},
 		"http upstream":    {"TRANSACTION_SERVICE_BASE_URL": "http://ts.example"},
 		"http token url":   {"OAUTH2_TOKEN_URL": "http://idp.example/token"},
+		"http jwks":        {"AUTH_JWKS_ENDPOINT": "http://idp.example/jwks"},
 		"email no from":    {"EMAIL_BASE_URL": "https://mail.example"},
 		"validator off":    {"AUTH_TOKEN_VALIDATOR_ENABLED": "false"},
 		"bad bool":         {"AUTH_TOKEN_VALIDATOR_ENABLED": "nope"},
@@ -142,6 +143,19 @@ func TestValidatorOffAllowedOnlyWithLoopbackUpstreams(t *testing.T) {
 	}
 	if cfg.Auth.ValidatorEnabled {
 		t.Fatal("validator still on")
+	}
+}
+
+func TestValidatorOffRejectsRemoteHRTokenURL(t *testing.T) {
+	env := baseEnv()
+	env["AUTH_TOKEN_VALIDATOR_ENABLED"] = "false"
+	env["TRANSACTION_SERVICE_BASE_URL"] = "http://localhost:8081"
+	env["HR_ENTITY_BASE_URL"] = "http://127.0.0.1:8081/graphql"
+	env["OAUTH2_TOKEN_URL"] = "http://localhost:8081/token"
+	env["HR_ENTITY_TOKEN_URL"] = "https://idp.example/token"
+	_, err := loadConfig(envFunc(env))
+	if err == nil || !strings.Contains(err.Error(), "HR_ENTITY_TOKEN_URL") {
+		t.Fatalf("err = %v, want the remote HR token URL named", err)
 	}
 }
 

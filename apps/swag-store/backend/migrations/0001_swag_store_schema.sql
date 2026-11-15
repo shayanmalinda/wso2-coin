@@ -21,7 +21,7 @@
 -- different addresses share a cart, orders or alerts.
 -- swag_applied_migrations is created by the migrator itself, not here.
 
-CREATE TABLE swag_categories (
+CREATE TABLE IF NOT EXISTS swag_categories (
     id         CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     slug       VARCHAR(80)  NOT NULL,
     name       VARCHAR(120) NOT NULL,
@@ -31,7 +31,7 @@ CREATE TABLE swag_categories (
     UNIQUE KEY categories_slug_uq (slug)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
-CREATE TABLE swag_products (
+CREATE TABLE IF NOT EXISTS swag_products (
     id                CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     slug              VARCHAR(120)  NOT NULL,
     name              VARCHAR(200)  NOT NULL,
@@ -57,7 +57,7 @@ CREATE TABLE swag_products (
     CONSTRAINT products_limit_window_ck CHECK (limit_window_days IS NULL OR limit_window_days > 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
-CREATE TABLE swag_product_options (
+CREATE TABLE IF NOT EXISTS swag_product_options (
     id         CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     product_id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     name       VARCHAR(60) NOT NULL,
@@ -67,7 +67,7 @@ CREATE TABLE swag_product_options (
     CONSTRAINT product_options_product_fk FOREIGN KEY (product_id) REFERENCES swag_products (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
-CREATE TABLE swag_option_values (
+CREATE TABLE IF NOT EXISTS swag_option_values (
     id         CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     option_id  CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     value      VARCHAR(60) NOT NULL,
@@ -78,7 +78,7 @@ CREATE TABLE swag_option_values (
     CONSTRAINT option_values_option_fk FOREIGN KEY (option_id) REFERENCES swag_product_options (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
-CREATE TABLE swag_product_images (
+CREATE TABLE IF NOT EXISTS swag_product_images (
     id              CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     product_id      CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     url             VARCHAR(2048) NOT NULL,
@@ -91,7 +91,7 @@ CREATE TABLE swag_product_images (
     CONSTRAINT product_images_value_fk FOREIGN KEY (option_value_id) REFERENCES swag_option_values (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
-CREATE TABLE swag_variants (
+CREATE TABLE IF NOT EXISTS swag_variants (
     id                CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     product_id        CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     sku               VARCHAR(64) NOT NULL,
@@ -111,7 +111,7 @@ CREATE TABLE swag_variants (
     CONSTRAINT variants_on_hand_min_ck CHECK (stock_on_hand >= 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
-CREATE TABLE swag_variant_option_values (
+CREATE TABLE IF NOT EXISTS swag_variant_option_values (
     variant_id      CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     option_value_id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     PRIMARY KEY (variant_id, option_value_id),
@@ -119,7 +119,7 @@ CREATE TABLE swag_variant_option_values (
     CONSTRAINT variant_values_value_fk FOREIGN KEY (option_value_id) REFERENCES swag_option_values (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
-CREATE TABLE swag_product_alternatives (
+CREATE TABLE IF NOT EXISTS swag_product_alternatives (
     product_id     CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     alternative_id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     sort           INT NOT NULL DEFAULT 0,
@@ -129,7 +129,7 @@ CREATE TABLE swag_product_alternatives (
     CONSTRAINT product_alternatives_self_ck CHECK (product_id <> alternative_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
-CREATE TABLE swag_inventory_movements (
+CREATE TABLE IF NOT EXISTS swag_inventory_movements (
     id          BIGINT NOT NULL AUTO_INCREMENT,
     variant_id  CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     delta       INT    NOT NULL,
@@ -142,7 +142,7 @@ CREATE TABLE swag_inventory_movements (
     CONSTRAINT inventory_movements_variant_fk FOREIGN KEY (variant_id) REFERENCES swag_variants (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
-CREATE TABLE swag_product_stats (
+CREATE TABLE IF NOT EXISTS swag_product_stats (
     product_id     CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     units_sold_30d INT         NOT NULL DEFAULT 0,
     updated_at     DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
@@ -150,7 +150,7 @@ CREATE TABLE swag_product_stats (
     CONSTRAINT product_stats_product_fk FOREIGN KEY (product_id) REFERENCES swag_products (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
-CREATE TABLE swag_cart_lines (
+CREATE TABLE IF NOT EXISTS swag_cart_lines (
     id         CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     user_email VARCHAR(320) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
     variant_id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
@@ -162,7 +162,7 @@ CREATE TABLE swag_cart_lines (
     CONSTRAINT cart_lines_quantity_ck CHECK (quantity BETWEEN 1 AND 99)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
-CREATE TABLE swag_pickup_offices (
+CREATE TABLE IF NOT EXISTS swag_pickup_offices (
     id                CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     name              VARCHAR(120) NOT NULL,
     address           VARCHAR(500) NOT NULL DEFAULT '',
@@ -181,12 +181,12 @@ CREATE TABLE swag_pickup_offices (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- One row per order number. SS-10001 is the first.
-CREATE TABLE swag_order_numbers (
+CREATE TABLE IF NOT EXISTS swag_order_numbers (
     n BIGINT NOT NULL AUTO_INCREMENT,
     PRIMARY KEY (n)
 ) ENGINE=InnoDB AUTO_INCREMENT=10001;
 
-CREATE TABLE swag_orders (
+CREATE TABLE IF NOT EXISTS swag_orders (
     id                 CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     order_no           VARCHAR(20)  NOT NULL,
     user_email         VARCHAR(320) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
@@ -221,7 +221,7 @@ CREATE TABLE swag_orders (
     CONSTRAINT orders_total_ck CHECK (total_coins > 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
-CREATE TABLE swag_order_lines (
+CREATE TABLE IF NOT EXISTS swag_order_lines (
     id               CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     order_id         CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     product_id       CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
@@ -241,7 +241,7 @@ CREATE TABLE swag_order_lines (
     CONSTRAINT order_lines_quantity_ck CHECK (quantity > 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
-CREATE TABLE swag_order_events (
+CREATE TABLE IF NOT EXISTS swag_order_events (
     id          BIGINT NOT NULL AUTO_INCREMENT,
     order_id    CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     from_status VARCHAR(20)   NULL,
@@ -254,7 +254,7 @@ CREATE TABLE swag_order_events (
     CONSTRAINT order_events_order_fk FOREIGN KEY (order_id) REFERENCES swag_orders (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
-CREATE TABLE swag_order_notes (
+CREATE TABLE IF NOT EXISTS swag_order_notes (
     id          BIGINT NOT NULL AUTO_INCREMENT,
     order_id    CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     note        VARCHAR(1000) NOT NULL,
@@ -267,7 +267,7 @@ CREATE TABLE swag_order_notes (
 
 -- pending_variant_id is set only while the alert is PENDING, so the unique key allows one pending
 -- alert per user and variant, and any number of closed ones.
-CREATE TABLE swag_stock_alerts (
+CREATE TABLE IF NOT EXISTS swag_stock_alerts (
     id                 CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     user_email         VARCHAR(320) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
     variant_id         CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
@@ -283,7 +283,7 @@ CREATE TABLE swag_stock_alerts (
     CONSTRAINT stock_alerts_variant_fk FOREIGN KEY (variant_id) REFERENCES swag_variants (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
-CREATE TABLE swag_notification_outbox (
+CREATE TABLE IF NOT EXISTS swag_notification_outbox (
     id              BIGINT NOT NULL AUTO_INCREMENT,
     template        VARCHAR(40)  NOT NULL,
     to_email        VARCHAR(320) NOT NULL,
@@ -301,7 +301,7 @@ CREATE TABLE swag_notification_outbox (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- No foreign keys: an admin action outlives what it describes.
-CREATE TABLE swag_admin_actions (
+CREATE TABLE IF NOT EXISTS swag_admin_actions (
     id            BIGINT NOT NULL AUTO_INCREMENT,
     actor_email   VARCHAR(320) NOT NULL,
     actor_user_id VARCHAR(128) NOT NULL,
@@ -315,7 +315,7 @@ CREATE TABLE swag_admin_actions (
     KEY admin_actions_entity_idx (entity_type, entity_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
-CREATE TABLE swag_job_state (
+CREATE TABLE IF NOT EXISTS swag_job_state (
     job         VARCHAR(40)  NOT NULL,
     job_cursor  VARCHAR(100) NULL,
     last_run_at DATETIME(6)  NULL,

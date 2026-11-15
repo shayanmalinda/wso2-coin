@@ -72,6 +72,10 @@ func TestReadJSON(t *testing.T) {
 		{`{"name":`, 400, "message"},
 		{``, 400, "message"},
 		{`{"name":"a"} {"name":"b"}`, 400, "message"},
+		{`{"name":"hoodie"}]`, 400, "message"},
+		{`{"name":"hoodie"}}`, 400, "message"},
+		{`{"name":"hoodie"} x`, 400, "message"},
+		{"{\"name\":\"hoodie\"} \n", 200, "hoodie"},
 		{`{}`, 400, "name is required."},
 		{`{"name":"` + strings.Repeat("a", 1<<20) + `"}`, 413, ErrMsgTooLarge},
 	}
