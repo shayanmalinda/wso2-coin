@@ -1,5 +1,5 @@
 $kind: http-request
-description: CONFIRMED → READY_FOR_PICKUP. Emails the shopper.
+description: CONFIRMED → READY_FOR_PICKUP. Emails the shopper. If Place order answered 202 (PENDING_PAYMENT), this answers 409 until the payment reconciler settles the order (its first ledger check is a minute after the order); send it again then.
 method: PATCH
 url: '{{baseUrl}}/admin/orders/:orderNo'
 headers:

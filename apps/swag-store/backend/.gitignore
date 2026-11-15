@@ -12,6 +12,9 @@ dist/
 coverage.html
 coverage.out
 
+# Postman workspace link (per developer)
+.postman/
+
 # Go workspace
 go.work
 go.work.sum

@@ -2,7 +2,7 @@ $kind: collection
 description: 'WSO2 Swag Store backend: catalog, cart, coin checkout, office pickup, stock alerts and admin.
 
 
-  The contract is openapi.yaml next to this folder. Errors are {message, errorCode}; branch on errorCode only.
+  The contract is openapi.yaml next to this folder. Errors are {message, errorCode}: message is always there, errorCode only on errors a client can act on (snake_case). Branch on errorCode only.
 
 
   Auth: every request except Health sends x-jwt-assertion. Locally, run the store with AUTH_TOKEN_VALIDATOR_ENABLED=false and the fakes (make fakes); the collection then mints an unsigned token from userEmail, userId and userGroups. Through the Choreo gateway, the client sends its access token and the gateway adds x-jwt-assertion.
@@ -46,6 +46,9 @@ variables:
 - key: adminProductId
   value: ''
   description: Set by Admin › Create product and List products
+- key: draftProductId
+  value: ''
+  description: Set by Admin › Create throwaway draft (deleted by Delete draft)
 - key: adminVariantId
   value: ''
   description: Set by Admin › Create product and Set options
@@ -92,7 +95,13 @@ scripts:
   code: |-
     pm.test('No 500', () => pm.expect(pm.response.code).to.not.equal(500));
     const type = pm.response.headers.get('Content-Type') || '';
-    if (pm.response.code >= 400 && type.includes('application/json')) {
-      pm.test('Error body has a message', () => pm.expect(pm.response.json().message).to.be.a('string'));
+    // A 503 from /health/dependencies is the dependency map, not an error body.
+    const isHealth = pm.request.url.getPath().endsWith('/health/dependencies');
+    if (pm.response.code >= 400 && type.includes('application/json') && !isHealth) {
+      const error = pm.response.json();
+      pm.test('Error body has a message', () => pm.expect(error.message).to.be.a('string'));
+      if (error.errorCode !== undefined) {
+        pm.test('Error code is snake_case', () => pm.expect(error.errorCode).to.match(/^[a-z]+(_[a-z]+)*$/));
+      }
     }
   language: text/javascript

@@ -1,4 +1,5 @@
 $kind: http-request
+description: Confirmed orders of the last 30 days at the office Checkout picked (pickupOfficeId). Run without Checkout, the office filter is empty, which means every office.
 method: POST
 url: '{{baseUrl}}/admin/orders/search'
 headers:
@@ -10,7 +11,7 @@ body:
     {
       "filters": {
         "status": "CONFIRMED",
-        "pickupOfficeId": "{{pickupOfficeId}}",
+        "pickupOfficeId": "{{searchOfficeId}}",
         "searchQuery": "",
         "from": "{{searchFrom}}",
         "to": "{{searchTo}}"
@@ -27,6 +28,8 @@ scripts:
     const day = (offset) => new Date(Date.now() + offset * 86400000).toISOString().slice(0, 10);
     pm.variables.set('searchFrom', day(-30));
     pm.variables.set('searchTo', day(1));
+    // Checkout sets pickupOfficeId; without it, search every office instead of sending a bad id.
+    pm.variables.set('searchOfficeId', pm.variables.get('pickupOfficeId') || '');
   language: text/javascript
 - type: afterResponse
   code: |-
