@@ -101,7 +101,8 @@ WHERE status = 'READY_FOR_PICKUP' AND ready_at <= ? AND reminder_sent_at IS NULL
 ORDER BY ready_at LIMIT 100;
 
 -- name: MarkReminderSent :execrows
-UPDATE swag_orders SET reminder_sent_at = CURRENT_TIMESTAMP(6) WHERE id = ? AND reminder_sent_at IS NULL;
+UPDATE swag_orders SET reminder_sent_at = CURRENT_TIMESTAMP(6)
+WHERE id = ? AND status = 'READY_FOR_PICKUP' AND reminder_sent_at IS NULL;
 
 -- name: FlagUncollected :execrows
 UPDATE swag_orders SET attention_reason = 'uncollected'

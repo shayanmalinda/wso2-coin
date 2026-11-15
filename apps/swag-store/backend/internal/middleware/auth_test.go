@@ -249,3 +249,27 @@ func TestX5CStrippingTransport(t *testing.T) {
 		t.Fatalf("JWKS damaged: %s (%v)", body, err)
 	}
 }
+
+func TestJWKSClientRefusesInsecureRedirect(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/keys" {
+			_, _ = io.WriteString(w, `{"keys":[]}`)
+			return
+		}
+		target := "http://jwks.example/keys"
+		if r.URL.Path == "/local" {
+			target = "/keys"
+		}
+		http.Redirect(w, r, target, http.StatusFound)
+	}))
+	defer srv.Close()
+
+	if _, err := jwksHTTPClient().Get(srv.URL + "/remote"); err == nil || !strings.Contains(err.Error(), "https") {
+		t.Fatalf("redirect to plain http: err = %v, want a refusal", err)
+	}
+	resp, err := jwksHTTPClient().Get(srv.URL + "/local")
+	if err != nil {
+		t.Fatalf("redirect within loopback: %v", err)
+	}
+	_ = resp.Body.Close()
+}

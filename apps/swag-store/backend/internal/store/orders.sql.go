@@ -577,7 +577,8 @@ func (q *Queries) MarkReady(ctx context.Context, id string) (int64, error) {
 }
 
 const markReminderSent = `-- name: MarkReminderSent :execrows
-UPDATE swag_orders SET reminder_sent_at = CURRENT_TIMESTAMP(6) WHERE id = ? AND reminder_sent_at IS NULL
+UPDATE swag_orders SET reminder_sent_at = CURRENT_TIMESTAMP(6)
+WHERE id = ? AND status = 'READY_FOR_PICKUP' AND reminder_sent_at IS NULL
 `
 
 func (q *Queries) MarkReminderSent(ctx context.Context, id string) (int64, error) {

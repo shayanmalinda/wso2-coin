@@ -28,6 +28,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -130,15 +131,32 @@ func writeMessage(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"message": msg})
 }
 
-// readJSON decodes a request body of at most limit bytes and refuses unknown
-// fields, so a client that drifts from the contract fails locally. An empty
-// body leaves v as it is.
+// readJSON decodes a request body of at most limit bytes holding one JSON
+// value, and refuses unknown fields, so a client that drifts from the
+// contract fails locally. An empty body leaves v as it is.
 func readJSON(r *http.Request, limit int64, v any) error {
-	dec := json.NewDecoder(io.LimitReader(r.Body, limit))
-	dec.DisallowUnknownFields()
-	err := dec.Decode(v)
-	if errors.Is(err, io.EOF) {
-		return nil
+	body, err := io.ReadAll(io.LimitReader(r.Body, limit+1))
+	if err != nil {
+		return err
 	}
-	return err
+	if int64(len(body)) > limit {
+		return errBodyTooLarge
+	}
+	dec := json.NewDecoder(bytes.NewReader(body))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		return err
+	}
+	if err := dec.Decode(&json.RawMessage{}); !errors.Is(err, io.EOF) {
+		return errTrailingData
+	}
+	return nil
 }
+
+var (
+	errBodyTooLarge = errors.New("request body is too large")
+	errTrailingData = errors.New("request body has data after the JSON value")
+)
