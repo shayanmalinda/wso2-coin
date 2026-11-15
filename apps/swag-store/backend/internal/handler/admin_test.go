@@ -121,13 +121,15 @@ func TestStockAlerts(t *testing.T) {
 // --- admin catalog ---
 
 type fakeAdminCatalog struct {
-	detail    *repository.ProductDetail
-	statusTo  string
-	statusErr error
-	updated   *repository.ProductInput
-	created   *repository.ProductInput
-	moveErr   error
-	updateErr error // UpdateProduct and UpdateVariant
+	detail       *repository.ProductDetail
+	statusTo     string
+	statusErr    error
+	updated      *repository.ProductInput
+	created      *repository.ProductInput
+	moveErr      error
+	updateErr    error                // UpdateProduct and UpdateVariant
+	category     *repository.Category // the row as it is under the lock
+	categoryRead *repository.Category // what an unlocked read returns
 }
 
 func (f *fakeAdminCatalog) SearchProducts(context.Context, repository.ProductQuery) ([]repository.ProductCard, int, error) {
@@ -184,7 +186,25 @@ func (f *fakeAdminCatalog) Categories(context.Context) ([]repository.Category, e
 	return nil, nil
 }
 func (f *fakeAdminCatalog) Category(context.Context, string) (*repository.Category, error) {
-	return nil, repository.ErrNotFound
+	if f.categoryRead == nil {
+		return nil, repository.ErrNotFound
+	}
+	c := *f.categoryRead
+	return &c, nil
+}
+
+// UpdateCategory patches the stored category the way the repository does
+// under its row lock.
+func (f *fakeAdminCatalog) UpdateCategory(_ context.Context, _ repository.Actor, _ string, patch func(*repository.Category) error) (*repository.Category, error) {
+	if f.category == nil {
+		return nil, repository.ErrNotFound
+	}
+	c := *f.category
+	if err := patch(&c); err != nil {
+		return nil, err
+	}
+	f.category = &c
+	return &c, nil
 }
 func (f *fakeAdminCatalog) SaveCategory(_ context.Context, _ repository.Actor, c repository.Category) (*repository.Category, error) {
 	return &c, nil
@@ -206,7 +226,7 @@ func activeDetail() *repository.ProductDetail {
 func TestAdminProductStatusPatch(t *testing.T) {
 	f := &fakeAdminCatalog{detail: activeDetail()}
 	cache := NewListCache()
-	cache.put("k", "cached")
+	cache.put("k", 0, "cached")
 	h := adminCatalog(f, cache)
 	r := testRouter(catalogAdmin, http.MethodPatch, "/admin/products/:id", h.Patch)
 
@@ -214,7 +234,7 @@ func TestAdminProductStatusPatch(t *testing.T) {
 	if rec.Code != 200 || f.statusTo != "REMOVED" {
 		t.Fatalf("remove = %d %s", rec.Code, rec.Body)
 	}
-	if _, ok := cache.get("k"); ok {
+	if _, _, ok := cache.get("k"); ok {
 		t.Fatal("removal did not clear the product-list cache")
 	}
 	if rec := do(r, http.MethodPatch, "/admin/products/"+pid, `{"status":"REMOVED","name":"x"}`); rec.Code != 400 {
@@ -280,6 +300,29 @@ func TestStockMovementRules(t *testing.T) {
 	f.moveErr = repository.ErrStateConflict
 	if rec := do(r, http.MethodPost, path, `{"delta":-50,"reason":"ADJUST"}`); rec.Code != 409 {
 		t.Fatalf("below reserved = %d", rec.Code)
+	}
+}
+
+// A PATCH changes only the fields it names, on the row as it is under the
+// lock: a name saved by another admin after an earlier read survives.
+func TestCategoryPatchAppliesToTheLockedRow(t *testing.T) {
+	f := &fakeAdminCatalog{
+		categoryRead: &repository.Category{ID: pid, Slug: "drinkware", Name: "Drinkware", Sort: 1},
+		category:     &repository.Category{ID: pid, Slug: "drinkware", Name: "Cups and bottles", Sort: 1},
+	}
+	h := adminCatalog(f, NewListCache())
+	r := testRouter(catalogAdmin, http.MethodPatch, "/admin/categories/:id", h.PatchCategory)
+	if rec := do(r, http.MethodPatch, "/admin/categories/"+pid, `{"sort":5}`); rec.Code != http.StatusOK {
+		t.Fatalf("status = %d %s", rec.Code, rec.Body)
+	}
+	if f.category.Name != "Cups and bottles" || f.category.Sort != 5 {
+		t.Fatalf("category = %+v, want the other edit kept and sort 5", f.category)
+	}
+	if rec := do(r, http.MethodPatch, "/admin/categories/"+pid, `{"name":""}`); rec.Code != http.StatusBadRequest {
+		t.Errorf("empty name = %d, want 400", rec.Code)
+	}
+	if f.category.Name != "Cups and bottles" {
+		t.Errorf("a refused patch wrote %+v", f.category)
 	}
 }
 
