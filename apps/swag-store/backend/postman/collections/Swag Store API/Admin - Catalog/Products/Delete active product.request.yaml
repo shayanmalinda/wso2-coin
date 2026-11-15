@@ -1,0 +1,14 @@
+$kind: http-request
+description: The product from Create product is ACTIVE by now, so the store refuses to delete it (409 state_conflict). Remove it instead.
+method: DELETE
+url: '{{baseUrl}}/admin/products/:id'
+pathVariables:
+- key: id
+  value: '{{adminProductId}}'
+scripts:
+- type: afterResponse
+  code: |-
+    pm.test('Status is 409', () => pm.expect(pm.response.code).to.equal(409));
+    pm.test('Error code is state_conflict', () => pm.expect(pm.response.json().errorCode).to.equal('state_conflict'));
+  language: text/javascript
+order: 12000
