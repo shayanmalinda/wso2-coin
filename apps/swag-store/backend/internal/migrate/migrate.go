@@ -85,15 +85,46 @@ func Latest(fsys fs.FS) (string, error) {
 	return files[len(files)-1], nil
 }
 
+// lockName serialises migration runs on one database.
+const lockName = "swag_store_migrate"
+
+// lockWait is how long a run waits for another run to finish.
+const lockWait = 300
+
 // Apply runs every file not yet recorded, in order, and records each one
 // after its statements succeed. The connection must allow multiple statements
-// (multiStatements=true). MySQL DDL is not transactional, so each file holds
-// one logical change. It is safe to re-run.
+// (multiStatements=true). It is safe to re-run, and concurrent runs wait for
+// each other on a named lock.
+//
+// MySQL commits each DDL statement on its own, so a run stopped inside a file
+// leaves part of it applied and the file unrecorded. Every file must therefore
+// be safe to replay (CREATE TABLE IF NOT EXISTS, and so on): the next run
+// replays the unrecorded file and finishes it.
 func Apply(ctx context.Context, db *sql.DB, fsys fs.FS) ([]string, error) {
-	if _, err := db.ExecContext(ctx, trackingTable); err != nil {
+	// GET_LOCK belongs to the session, so every statement runs on one connection.
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+	var got sql.NullInt64
+	if err := conn.QueryRowContext(ctx, "SELECT GET_LOCK(?, ?)", lockName, lockWait).Scan(&got); err != nil {
+		return nil, fmt.Errorf("take migration lock: %w", err)
+	}
+	if got.Int64 != 1 {
+		return nil, errors.New("take migration lock: another migration run still holds it")
+	}
+	defer func() {
+		_, _ = conn.ExecContext(context.WithoutCancel(ctx), "DO RELEASE_LOCK(?)", lockName)
+	}()
+	return apply(ctx, conn, fsys)
+}
+
+func apply(ctx context.Context, conn *sql.Conn, fsys fs.FS) ([]string, error) {
+	if _, err := conn.ExecContext(ctx, trackingTable); err != nil {
 		return nil, fmt.Errorf("create tracking table: %w", err)
 	}
-	done, err := appliedSet(ctx, db)
+	done, err := appliedSet(ctx, conn)
 	if err != nil {
 		return nil, err
 	}
@@ -110,10 +141,10 @@ func Apply(ctx context.Context, db *sql.DB, fsys fs.FS) ([]string, error) {
 		if err != nil {
 			return applied, err
 		}
-		if _, err := db.ExecContext(ctx, string(body)); err != nil {
+		if _, err := conn.ExecContext(ctx, string(body)); err != nil {
 			return applied, fmt.Errorf("apply %s: %w", name, err)
 		}
-		if _, err := db.ExecContext(ctx, "INSERT INTO swag_applied_migrations (filename) VALUES (?)", name); err != nil {
+		if _, err := conn.ExecContext(ctx, "INSERT INTO swag_applied_migrations (filename) VALUES (?)", name); err != nil {
 			return applied, fmt.Errorf("record %s: %w", name, err)
 		}
 		applied = append(applied, name)
@@ -121,8 +152,8 @@ func Apply(ctx context.Context, db *sql.DB, fsys fs.FS) ([]string, error) {
 	return applied, nil
 }
 
-func appliedSet(ctx context.Context, db *sql.DB) (map[string]bool, error) {
-	rows, err := db.QueryContext(ctx, "SELECT filename FROM swag_applied_migrations")
+func appliedSet(ctx context.Context, conn *sql.Conn) (map[string]bool, error) {
+	rows, err := conn.QueryContext(ctx, "SELECT filename FROM swag_applied_migrations")
 	if err != nil {
 		return nil, fmt.Errorf("read applied migrations: %w", err)
 	}

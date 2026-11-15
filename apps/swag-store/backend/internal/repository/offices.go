@@ -95,6 +95,28 @@ func (s *Store) DefaultOfficeID(ctx context.Context, email, location string) (st
 	return "", nil
 }
 
+// PatchOffice locks the office, applies patch to the stored row and saves it,
+// so two concurrent edits of different fields both survive. An error from
+// patch is returned as is and nothing is written.
+func (s *Store) PatchOffice(ctx context.Context, a Actor, id string, patch func(*Office) error) (*Office, error) {
+	var out Office
+	err := s.inTx(ctx, func(q *store.Queries) error {
+		row, err := q.LockOffice(ctx, id)
+		if err != nil {
+			return notFound(err)
+		}
+		out = officeFrom(row)
+		if err := patch(&out); err != nil {
+			return err
+		}
+		return updateOffice(ctx, q, a, out)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // SaveOffice creates (empty ID) or updates an office, with an admin action row.
 func (s *Store) SaveOffice(ctx context.Context, a Actor, o Office) (*Office, error) {
 	locs, err := json.Marshal(o.HRLocations)
@@ -118,24 +140,32 @@ func (s *Store) SaveOffice(ctx context.Context, a Actor, o Office) (*Office, err
 			}
 			return audit(ctx, q, a, "office_created", "pickup_office", o.ID, map[string]any{"name": o.Name})
 		}
-		n, err := q.UpdateOffice(ctx, store.UpdateOfficeParams{Name: o.Name, Address: o.Address, Country: o.Country,
-			CollectionPoint: o.CollectionPoint, Hours: o.Hours, LeadTimeDays: int32(o.LeadTimeDays), // #nosec G115
-			HrLocationsJson: locs, Active: o.Active, Sort: int32(o.Sort), ID: o.ID}) // #nosec G115
-		if isDuplicate(err) {
-			return ErrConflict
-		}
-		if err != nil {
-			return err
-		}
-		if n == 0 {
-			if _, err := q.GetOffice(ctx, o.ID); err != nil {
-				return notFound(err)
-			}
-		}
-		return audit(ctx, q, a, "office_updated", "pickup_office", o.ID, map[string]any{"name": o.Name, "active": o.Active})
+		return updateOffice(ctx, q, a, o)
 	})
 	if err != nil {
 		return nil, err
 	}
 	return &o, nil
+}
+
+func updateOffice(ctx context.Context, q *store.Queries, a Actor, o Office) error {
+	locs, err := json.Marshal(o.HRLocations)
+	if err != nil {
+		return err
+	}
+	n, err := q.UpdateOffice(ctx, store.UpdateOfficeParams{Name: o.Name, Address: o.Address, Country: o.Country,
+		CollectionPoint: o.CollectionPoint, Hours: o.Hours, LeadTimeDays: int32(o.LeadTimeDays), // #nosec G115
+		HrLocationsJson: locs, Active: o.Active, Sort: int32(o.Sort), ID: o.ID}) // #nosec G115
+	if isDuplicate(err) {
+		return ErrConflict
+	}
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		if _, err := q.GetOffice(ctx, o.ID); err != nil {
+			return notFound(err)
+		}
+	}
+	return audit(ctx, q, a, "office_updated", "pickup_office", o.ID, map[string]any{"name": o.Name, "active": o.Active})
 }

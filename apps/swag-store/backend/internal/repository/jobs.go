@@ -21,6 +21,7 @@ import (
 	"database/sql"
 	"errors"
 	"time"
+	"unicode/utf8"
 
 	"github.com/wso2/wso2-coin/apps/swag-store/backend/internal/notifications"
 	"github.com/wso2/wso2-coin/apps/swag-store/backend/internal/store"
@@ -80,11 +81,16 @@ func (s *Store) EmailFailed(ctx context.Context, id int64, reason string) error 
 	return s.q.MarkEmailFailed(ctx, store.MarkEmailFailedParams{LastError: nullStr(truncate(reason, 256)), ID: id})
 }
 
+// truncate cuts s to at most n bytes without splitting a UTF-8 character,
+// which a strict utf8mb4 column would refuse.
 func truncate(s string, n int) string {
-	if len(s) > n {
-		return s[:n]
+	if len(s) <= n {
+		return s
 	}
-	return s
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
 }
 
 // QueueEmail adds one outbox row outside any other change (jobs).

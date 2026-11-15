@@ -470,8 +470,20 @@ func (s *Service) ReconcilePending(ctx context.Context, o *repository.Order) (st
 			_, err := s.fail(ctx, o, repository.Failure{Code: CodePaymentMismatch, Attention: AttentionPaymentMismatch}, nil)
 			return "failed", err
 		}
-		if _, err := s.store.ConfirmOrder(ctx, o.ID); err != nil {
+		done, err := s.store.ConfirmOrder(ctx, o.ID)
+		if err != nil {
 			return "", err
+		}
+		if !done {
+			// Another pass settled it first; if that failed it, the coins
+			// were still taken, so take the late-payment path.
+			_, err := s.confirmLost(ctx, o)
+			if errors.Is(err, ErrPaymentFailed) {
+				return "failed", nil // stock gone: flagged late_payment_no_stock
+			}
+			if err != nil {
+				return "", err
+			}
 		}
 		return "confirmed", nil
 	}

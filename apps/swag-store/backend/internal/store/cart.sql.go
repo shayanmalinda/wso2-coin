@@ -194,6 +194,36 @@ func (q *Queries) DeleteCartLinesForVariants(ctx context.Context, arg DeleteCart
 	return err
 }
 
+const deleteCartLinesInOrder = `-- name: DeleteCartLinesInOrder :exec
+DELETE FROM swag_cart_lines
+WHERE swag_cart_lines.user_email = ? AND swag_cart_lines.variant_id IN (/*SLICE:variant_ids*/?)
+  AND swag_cart_lines.added_at <= (SELECT o.placed_at FROM swag_orders o WHERE o.id = ?)
+`
+
+type DeleteCartLinesInOrderParams struct {
+	UserEmail  string
+	VariantIds []string
+	OrderID    string
+}
+
+// Lines added after the order was placed are a later choice and stay.
+func (q *Queries) DeleteCartLinesInOrder(ctx context.Context, arg DeleteCartLinesInOrderParams) error {
+	query := deleteCartLinesInOrder
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.UserEmail)
+	if len(arg.VariantIds) > 0 {
+		for _, v := range arg.VariantIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:variant_ids*/?", strings.Repeat(",?", len(arg.VariantIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:variant_ids*/?", "NULL", 1)
+	}
+	queryParams = append(queryParams, arg.OrderID)
+	_, err := q.db.ExecContext(ctx, query, queryParams...)
+	return err
+}
+
 const getCartLineByVariant = `-- name: GetCartLineByVariant :one
 SELECT id, user_email, variant_id, quantity, added_at FROM swag_cart_lines WHERE user_email = ? AND variant_id = ?
 `
@@ -356,6 +386,30 @@ func (q *Queries) LockCartLines(ctx context.Context, userEmail string) ([]string
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockOffice = `-- name: LockOffice :one
+SELECT id, name, address, country, collection_point, hours, lead_time_days, hr_locations_json, active, sort, created_at, updated_at FROM swag_pickup_offices WHERE id = ? FOR UPDATE
+`
+
+func (q *Queries) LockOffice(ctx context.Context, id string) (PickupOffice, error) {
+	row := q.db.QueryRowContext(ctx, lockOffice, id)
+	var i PickupOffice
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Address,
+		&i.Country,
+		&i.CollectionPoint,
+		&i.Hours,
+		&i.LeadTimeDays,
+		&i.HrLocationsJson,
+		&i.Active,
+		&i.Sort,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const paidUnitsForProduct = `-- name: PaidUnitsForProduct :one

@@ -49,6 +49,12 @@ DELETE FROM swag_cart_lines WHERE id = ? AND user_email = ?;
 -- name: DeleteCartLinesForVariants :exec
 DELETE FROM swag_cart_lines WHERE user_email = sqlc.arg(user_email) AND variant_id IN (sqlc.slice(variant_ids));
 
+-- name: DeleteCartLinesInOrder :exec
+-- Lines added after the order was placed are a later choice and stay.
+DELETE FROM swag_cart_lines
+WHERE swag_cart_lines.user_email = sqlc.arg(user_email) AND swag_cart_lines.variant_id IN (sqlc.slice(variant_ids))
+  AND swag_cart_lines.added_at <= (SELECT o.placed_at FROM swag_orders o WHERE o.id = sqlc.arg(order_id));
+
 -- name: PaidUnitsForProduct :one
 SELECT CAST(COALESCE(SUM(ol.quantity), 0) AS SIGNED)
 FROM swag_order_lines ol JOIN swag_orders o ON o.id = ol.order_id
@@ -64,6 +70,9 @@ SELECT * FROM swag_pickup_offices ORDER BY sort, name;
 
 -- name: GetOffice :one
 SELECT * FROM swag_pickup_offices WHERE id = ?;
+
+-- name: LockOffice :one
+SELECT * FROM swag_pickup_offices WHERE id = ? FOR UPDATE;
 
 -- name: CreateOffice :exec
 INSERT INTO swag_pickup_offices (id, name, address, country, collection_point, hours, lead_time_days,
