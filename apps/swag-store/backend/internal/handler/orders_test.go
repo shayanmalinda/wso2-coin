@@ -74,7 +74,12 @@ func orderOf(status orders.Status, failure string) *repository.Order {
 		Status: status, Total: 180, OfficeName: "Colombo office", FailureCode: failure, PlacedAt: time.Unix(1_800_000_000, 0)}
 }
 
-const orderBody = `{"pickupOfficeId":"` + testOffice + `","walletAddress":"0xuser"}`
+// quoteBody is a checkout body; orderBody adds the total the shopper confirmed,
+// which POST /orders requires.
+const (
+	quoteBody = `{"pickupOfficeId":"` + testOffice + `","walletAddress":"0xuser"}`
+	orderBody = `{"pickupOfficeId":"` + testOffice + `","walletAddress":"0xuser","expectedTotal":180}`
+)
 
 func placeOrder(f *fakeCheckout, body string, headers ...string) (int, errorBody, string) {
 	h := NewOrdersHandler(f, &fakeOrders{})
@@ -96,7 +101,7 @@ func TestPlaceOrderStatusCodes(t *testing.T) {
 		{"pending", orderOf(orders.PendingPayment, ""), nil, 202, ""},
 		{"replay of a failed order", orderOf(orders.Failed, "insufficient_funds"), nil, 402, CodeInsufficientFunds},
 		{"replay of a wallet refusal", orderOf(orders.Failed, "wallet_not_owned"), nil, 403, CodeWalletNotOwned},
-		{"replay of a mismatch", orderOf(orders.Failed, "payment_mismatch"), nil, 402, CodePaymentFailed},
+		{"replay of a mismatch", orderOf(orders.Failed, "payment_mismatch"), nil, 402, CodePaymentMismatch},
 		{"hr down", nil, checkout.ErrHRUnavailable, 503, CodeHRUnavailable},
 		{"not active", nil, checkout.ErrNotActiveEmployee, 403, CodeNotActiveEmployee},
 		{"paused", nil, checkout.ErrPaymentsPaused, 503, CodePaymentsPaused},
@@ -104,12 +109,16 @@ func TestPlaceOrderStatusCodes(t *testing.T) {
 		{"insufficient", orderOf(orders.Failed, "insufficient_funds"), checkout.ErrInsufficientFunds, 402, CodeInsufficientFunds},
 		{"wallet", orderOf(orders.Failed, "wallet_not_owned"), checkout.ErrWalletNotOwned, 403, CodeWalletNotOwned},
 		{"refused", orderOf(orders.Failed, "payment_failed"), checkout.ErrPaymentFailed, 402, CodePaymentFailed},
-		{"mismatch", orderOf(orders.Failed, "payment_mismatch"), checkout.ErrPaymentMismatch, 402, CodePaymentFailed},
+		{"mismatch", orderOf(orders.Failed, "payment_mismatch"), checkout.ErrPaymentMismatch, 402, CodePaymentMismatch},
 	}
 	for _, tc := range cases {
 		status, eb, raw := placeOrder(&fakeCheckout{order: tc.order, err: tc.err}, orderBody, "Idempotency-Key", testKey)
 		if status != tc.status || eb.ErrorCode != tc.code {
 			t.Errorf("%s: %d %s, want %d %s", tc.name, status, raw, tc.status, tc.code)
+		}
+		// A mismatched payment may have moved the coins: never say it didn't.
+		if tc.code == CodePaymentMismatch && strings.Contains(raw, "No coins were taken") {
+			t.Errorf("%s: %s", tc.name, raw)
 		}
 	}
 	status, _, raw := placeOrder(&fakeCheckout{order: orderOf(orders.Confirmed, "")}, orderBody, "Idempotency-Key", testKey)
@@ -145,7 +154,9 @@ func TestPlaceOrderNeedsIdempotencyKey(t *testing.T) {
 }
 
 func TestPlaceOrderValidatesBody(t *testing.T) {
-	for _, body := range []string{`{}`, `{"pickupOfficeId":"x","walletAddress":"0xuser"}`, `{"pickupOfficeId":"` + testOffice + `"}`} {
+	for _, body := range []string{`{}`, `{"pickupOfficeId":"x","walletAddress":"0xuser"}`, `{"pickupOfficeId":"` + testOffice + `"}`,
+		quoteBody, // no expectedTotal: a price change since the quote would go unnoticed
+	} {
 		status, _, _ := placeOrder(&fakeCheckout{}, body, "Idempotency-Key", testKey)
 		if status != 400 {
 			t.Errorf("body %s: %d", body, status)
@@ -165,7 +176,7 @@ func TestQuoteResponse(t *testing.T) {
 		Problems: []checkout.Problem{{Code: "lines_unavailable", Message: "x"}},
 	}}
 	h := NewOrdersHandler(f, &fakeOrders{})
-	rec := do(testRouter(shopper, http.MethodPost, "/quotes", h.Quote), http.MethodPost, "/quotes", orderBody)
+	rec := do(testRouter(shopper, http.MethodPost, "/quotes", h.Quote), http.MethodPost, "/quotes", quoteBody)
 	body := decode[map[string]any](t, rec)
 	if rec.Code != 200 || body["total"] != float64(180) || body["canPlace"] != false {
 		t.Fatalf("quote = %d %v", rec.Code, body)
@@ -185,12 +196,12 @@ func TestQuoteResponse(t *testing.T) {
 
 func TestQuoteHRDown(t *testing.T) {
 	h := NewOrdersHandler(&fakeCheckout{err: checkout.ErrHRUnavailable}, &fakeOrders{})
-	rec := do(testRouter(shopper, http.MethodPost, "/quotes", h.Quote), http.MethodPost, "/quotes", orderBody)
+	rec := do(testRouter(shopper, http.MethodPost, "/quotes", h.Quote), http.MethodPost, "/quotes", quoteBody)
 	if rec.Code != 503 || decode[errorBody](t, rec).ErrorCode != CodeHRUnavailable {
 		t.Fatalf("quote with HR down = %d %s", rec.Code, rec.Body)
 	}
 	h = NewOrdersHandler(&fakeCheckout{err: checkout.ErrCoinsUnavailable}, &fakeOrders{})
-	rec = do(testRouter(shopper, http.MethodPost, "/quotes", h.Quote), http.MethodPost, "/quotes", orderBody)
+	rec = do(testRouter(shopper, http.MethodPost, "/quotes", h.Quote), http.MethodPost, "/quotes", quoteBody)
 	if rec.Code != 503 || decode[errorBody](t, rec).ErrorCode != CodeCoinsUnavailable {
 		t.Fatalf("quote with coins down = %d %s", rec.Code, rec.Body)
 	}
