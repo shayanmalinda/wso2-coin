@@ -256,3 +256,29 @@ func TestPhotoUploadReadsBodyBeforeRefusing(t *testing.T) {
 		t.Fatalf("removed product = %d, upload read to the end: %v", rec.Code, src.done)
 	}
 }
+
+// Every refusal waits for the whole upload first, the early ones too: a reply
+// sent mid-upload can reach the browser as a reset connection.
+func TestPhotoUploadDrainsBeforeEarlyRefusals(t *testing.T) {
+	const limit = 1 << 10
+	h := NewAdminCatalogHandler(&fakeAdminCatalog{detail: activeDetail()}, NewListCache(), &fakePhotos{}, limit)
+	tooBig, tooBigCT := formBody(t, file(append(pngBytes, bytes.Repeat([]byte{9}, limit)...)), view("front"))
+	extra, extraCT := formBody(t, part{name: "note", body: []byte("hi")}, view("front"), file(pngBytes))
+	for _, tc := range []struct {
+		name, body, contentType string
+		status                  int
+	}{
+		{"file over the limit", tooBig, tooBigCT, http.StatusRequestEntityTooLarge},
+		{"unknown field", extra, extraCT, http.StatusBadRequest},
+		{"not multipart", "plain text body", "text/plain", http.StatusUnsupportedMediaType},
+	} {
+		src := &eofReader{r: strings.NewReader(tc.body)}
+		req := httptest.NewRequest(http.MethodPost, "/admin/products/"+pid+"/images", src)
+		req.Header.Set("Content-Type", tc.contentType)
+		rec := httptest.NewRecorder()
+		uploadRouter(h, nil).ServeHTTP(rec, req)
+		if rec.Code != tc.status || !src.done {
+			t.Errorf("%s = %d (want %d), upload read to the end: %v", tc.name, rec.Code, tc.status, src.done)
+		}
+	}
+}

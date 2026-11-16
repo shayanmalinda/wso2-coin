@@ -161,13 +161,20 @@ func (h *AdminCatalogHandler) putPhoto(ctx context.Context, productID, view, ext
 }
 
 // readPhotoForm reads exactly one view field and one file part, part by part,
-// so nothing is written to disk. It writes the error response itself.
+// so nothing is written to disk. It writes the error response itself, always
+// after reading the body to the end (still capped by MaxBytesReader): a reply
+// sent while the browser is still uploading can reach it as a reset
+// connection instead of the message.
 func (h *AdminCatalogHandler) readPhotoForm(c *gin.Context) (view string, body []byte, ok bool) {
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, h.maxUpload+multipartSlack)
+	refuse := func(reply func()) (string, []byte, bool) {
+		_, _ = io.Copy(io.Discard, c.Request.Body)
+		reply()
+		return "", nil, false
+	}
 	mr, err := c.Request.MultipartReader()
 	if err != nil {
-		writeError(c, http.StatusUnsupportedMediaType, "Send the photo as multipart/form-data.")
-		return "", nil, false
+		return refuse(func() { writeError(c, http.StatusUnsupportedMediaType, "Send the photo as multipart/form-data.") })
 	}
 	const oneOfEach = "Send one view and one file."
 	views, files := 0, 0
@@ -177,37 +184,33 @@ func (h *AdminCatalogHandler) readPhotoForm(c *gin.Context) (view string, body [
 			break
 		}
 		if err != nil {
-			h.writeFormError(c, err)
-			return "", nil, false
+			return refuse(func() { h.writeFormError(c, err) })
 		}
 		switch p.FormName() {
 		case "view":
 			views++
 			b, err := io.ReadAll(io.LimitReader(p, 32))
 			if err != nil {
-				h.writeFormError(c, err)
-				return "", nil, false
+				return refuse(func() { h.writeFormError(c, err) })
 			}
 			view = strings.TrimSpace(string(b))
 		case "file":
 			files++
 			b, err := io.ReadAll(io.LimitReader(p, h.maxUpload+1))
 			if err != nil {
-				h.writeFormError(c, err)
-				return "", nil, false
+				return refuse(func() { h.writeFormError(c, err) })
 			}
 			if int64(len(b)) > h.maxUpload {
-				writeError(c, http.StatusRequestEntityTooLarge, "Photos are at most "+sizeText(h.maxUpload)+".")
-				return "", nil, false
+				return refuse(func() {
+					writeError(c, http.StatusRequestEntityTooLarge, "Photos are at most "+sizeText(h.maxUpload)+".")
+				})
 			}
 			body = b
 		default:
-			writeError(c, http.StatusBadRequest, oneOfEach)
-			return "", nil, false
+			return refuse(func() { writeError(c, http.StatusBadRequest, oneOfEach) })
 		}
 		_ = p.Close()
 	}
-	// Read to the end (still capped by MaxBytesReader) so the reply never races the upload.
 	_, _ = io.Copy(io.Discard, c.Request.Body)
 	switch {
 	case views != 1 || files != 1:

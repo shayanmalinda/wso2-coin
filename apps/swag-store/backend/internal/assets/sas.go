@@ -34,7 +34,8 @@ const (
 	sasLead     = 15 * time.Minute
 	sasLifetime = 48 * time.Hour
 	// Delegation keys: Azure allows 7 days. The key starts before today's
-	// midnight so it covers today's SAS, and is renewed with 3 days left.
+	// midnight so it covers today's SAS, and its whole window, start to
+	// expiry, stays just under 7 days. It is renewed with 3 days left.
 	keyLead       = 30 * time.Minute
 	keyLifetime   = 7*day - 5*time.Minute
 	keyRenewBelow = 72 * time.Hour
@@ -125,7 +126,8 @@ func (c *Client) refreshKey(ctx context.Context) time.Duration {
 	if fresh {
 		return keyCheckEvery
 	}
-	start, expiry := now.Truncate(day).Add(-keyLead), now.Add(keyLifetime)
+	start := now.Truncate(day).Add(-keyLead)
+	expiry := start.Add(keyLifetime)
 	fetchCtx, cancel := context.WithTimeout(ctx, c.fetchTimeout())
 	sign, err := c.fetchKey(fetchCtx, start, expiry)
 	cancel()

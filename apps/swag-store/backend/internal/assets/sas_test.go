@@ -139,8 +139,13 @@ func TestDelegationKeyRenewal(t *testing.T) {
 	if len(calls) != 1 {
 		t.Fatalf("calls = %d", len(calls))
 	}
+	// The key starts before today's midnight, so today's URLs can be signed,
+	// and its whole window stays under Azure's 7 days.
 	assertEq(t, calls[0].start.Format(time.RFC3339), "2026-11-12T23:30:00Z")
-	assertEq(t, calls[0].expiry.Format(time.RFC3339), "2026-11-20T09:55:00Z")
+	assertEq(t, calls[0].expiry.Format(time.RFC3339), "2026-11-19T23:25:00Z")
+	if span := calls[0].expiry.Sub(calls[0].start); span >= 7*day {
+		t.Fatalf("key window = %v, want under 7 days", span)
+	}
 	assertEq(t, c.Health(), "ok")
 	if c.ReadURL(testPhoto) == nil {
 		t.Fatal("no URL with a key")
