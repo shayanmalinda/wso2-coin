@@ -36,6 +36,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/golang-jwt/jwt/v5"
 
+	"github.com/wso2/wso2-coin/apps/swag-store/backend/internal/assets"
 	"github.com/wso2/wso2-coin/apps/swag-store/backend/internal/checkout"
 	"github.com/wso2/wso2-coin/apps/swag-store/backend/internal/coins"
 	"github.com/wso2/wso2-coin/apps/swag-store/backend/internal/handler"
@@ -120,6 +121,14 @@ func run() error {
 		emailProbe = handler.ErrProbe("email", emailClient.Health)
 	}
 
+	// Photos are optional: without ASSETS_ACCOUNT_URL, uploads answer 503 and
+	// every photo URL is null.
+	photos := assets.Disabled()
+	if cfg.Assets.AccountURL != "" {
+		if photos, err = assets.New(cfg.Assets); err != nil {
+			return err
+		}
+	}
 	guard := handler.NewAccessGuard(cfg.Access)
 	listCache := handler.NewListCache()
 	a := &app{
@@ -132,25 +141,27 @@ func run() error {
 			}},
 			handler.ErrProbe("hrEntity", hrClient.Health),
 			emailProbe,
+			{Name: "assets", Check: func(context.Context) string { return photos.Health() }},
 		}),
 		users:        handler.NewUsersHandler(guard, employees),
 		wallets:      handler.NewWalletsHandler(coinsClient),
-		catalog:      handler.NewCatalogHandler(repo, listCache, cfg.LowStockThreshold),
-		cart:         handler.NewCartHandler(repo, cfg.LowStockThreshold),
+		catalog:      handler.NewCatalogHandler(repo, listCache, cfg.LowStockThreshold, photos),
+		cart:         handler.NewCartHandler(repo, cfg.LowStockThreshold, photos),
 		offices:      handler.NewOfficesHandler(repo, employees),
 		orders:       handler.NewOrdersHandler(svc, repo),
 		alerts:       handler.NewAlertsHandler(repo),
 		admin:        handler.NewAdminHandler(guard, repo, cfg.LowStockThreshold, cfg.Timezone),
-		adminCatalog: handler.NewAdminCatalogHandler(repo, listCache, cfg.ImageHosts),
+		adminCatalog: handler.NewAdminCatalogHandler(repo, listCache, photos, cfg.MaxUploadBytes),
 		adminOrders:  handler.NewAdminOrdersHandler(repo),
 	}
 
 	jobsCtx, stopJobs := context.WithCancel(context.WithoutCancel(ctx))
 	defer stopJobs()
+	photos.Start(jobsCtx) // fetches and renews the photo-signing key in the background
 	var runner *jobs.Runner
 	if cfg.JobsEnabled {
 		common := notifications.Common{StoreURL: cfg.WebURL, ContactEmail: cfg.ContactEmail, Timezone: cfg.Timezone}
-		jobList := backgroundJobs(cfg, repo, svc, coinsClient, sender, common)
+		jobList := backgroundJobs(cfg, repo, svc, coinsClient, sender, common, photos)
 		// Job locks get their own pool: a job holds its lock connection while
 		// it works on the main pool, which may be as small as one connection.
 		lockDB, err := openDB(ctx, cfg)

@@ -722,3 +722,69 @@ func TestJobLockWorksWithAOneConnectionPool(t *testing.T) {
 		t.Fatalf("ran = %v, err = %v", ran, err)
 	}
 }
+
+// The photo cleanup keeps every path a product uses, a removed product's too.
+func TestPhotoPathsInUse(t *testing.T) {
+	f := newFixture(t, 0)
+	ctx := context.Background()
+	front := "products/" + f.productID + "/front-3f9a2c1d.jpg"
+	if _, err := f.s.UpdateProduct(ctx, admin, f.productID, func(in *repository.ProductInput) error {
+		in.Images = []repository.ImageInput{{View: "front", Path: front}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.s.SetProductStatus(ctx, admin, f.productID, "REMOVED", "gone"); err != nil {
+		t.Fatal(err)
+	}
+	inUse, err := f.s.PhotoPathsInUse(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(inUse) != 1 || !inUse[front] {
+		t.Fatalf("in use = %v, want only %s", inUse, front)
+	}
+}
+
+// Photos are stored one per view and read back in gallery order, and an
+// upload is audited without touching the product.
+func TestPhotosStoredInViewOrder(t *testing.T) {
+	f := newFixture(t, 0)
+	ctx := context.Background()
+	back := "products/" + f.productID + "/back-0a1b2c3d.png"
+	front := "products/" + f.productID + "/front-3f9a2c1d.jpg"
+	if _, err := f.s.UpdateProduct(ctx, admin, f.productID, func(in *repository.ProductInput) error {
+		in.Images = []repository.ImageInput{{View: "back", Path: back, Alt: "Logo"}, {View: "front", Path: front}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	d, err := f.s.ProductByID(ctx, f.productID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(d.Images) != 2 || d.Images[0].View != "front" || d.Images[1].Path != back || d.Images[1].Alt != "Logo" {
+		t.Fatalf("images = %+v", d.Images)
+	}
+	cards, _, err := f.s.SearchProducts(ctx, repository.ProductQuery{Status: "ACTIVE", Sort: "name", Limit: 10})
+	if err != nil || len(cards) != 1 || cards[0].ImagePath != front {
+		t.Fatalf("card = %+v, %v", cards, err)
+	}
+
+	if err := f.s.RecordPhotoUpload(ctx, admin, f.productID, repository.PhotoUploadDetail{View: "top", Path: "p", Bytes: 9, ContentType: "image/png"}); err != nil {
+		t.Fatal(err)
+	}
+	events, _, err := f.s.AuditEvents(ctx, 50, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := 0
+	for _, e := range events {
+		if e.Action == "product_image_uploaded" {
+			found++
+		}
+	}
+	if found != 1 {
+		t.Fatalf("product_image_uploaded events = %d", found)
+	}
+}
