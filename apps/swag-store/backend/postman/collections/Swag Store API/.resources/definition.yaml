@@ -30,7 +30,7 @@ variables:
   description: Set by List pickup offices (the caller's default)
 - key: expectedTotal
   value: '0'
-  description: Set by Quote; Place order refuses a changed total
+  description: Set by Quote; Place order requires it and refuses a changed total
 - key: orderNo
   value: ''
   description: Set by Place order and List my orders (SS-nnnnn), or by Admin › Search orders when still empty

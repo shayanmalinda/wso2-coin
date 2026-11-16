@@ -61,6 +61,19 @@ func (f *fakeOffices) SaveOffice(_ context.Context, _ repository.Actor, o reposi
 	f.saved = &o
 	return &o, nil
 }
+func (f *fakeOffices) PatchOffice(_ context.Context, _ repository.Actor, id string, patch func(*repository.Office) error) (*repository.Office, error) {
+	for i := range f.offices {
+		if f.offices[i].ID == id {
+			o := f.offices[i]
+			if err := patch(&o); err != nil {
+				return nil, err
+			}
+			f.offices[i], f.saved = o, &o
+			return &o, nil
+		}
+	}
+	return nil, repository.ErrNotFound
+}
 
 func TestPickupOfficesUseHRLocationAndSurviveHRDown(t *testing.T) {
 	f := &fakeOffices{offices: []repository.Office{{ID: "o1", Name: "Colombo office", Active: true, HRLocations: []string{"Colombo"}}}}
@@ -89,6 +102,24 @@ func TestAdminOfficeValidation(t *testing.T) {
 	rec := do(r, http.MethodPost, "/admin/pickup-offices", `{"name":"Colombo office","leadTimeDays":2,"hrLocations":["Colombo"],"active":true}`)
 	if rec.Code != 201 || f.saved == nil || f.saved.Name != "Colombo office" || !f.saved.Active {
 		t.Fatalf("create = %d %s", rec.Code, rec.Body)
+	}
+}
+
+func TestAdminOfficePatch(t *testing.T) {
+	const id = "0192f3a4-5b6c-7d8e-9f01-23456789abcd"
+	f := &fakeOffices{offices: []repository.Office{{ID: id, Name: "Colombo office", Hours: "9-5", Active: true}}}
+	h := NewOfficesHandler(f, &fakeEmployees{})
+	r := testRouter(opsAdmin, http.MethodPatch, "/admin/pickup-offices/:id", h.Update)
+	if rec := do(r, http.MethodPatch, "/admin/pickup-offices/"+id, `{"name":""}`); rec.Code != 400 || f.saved != nil {
+		t.Fatalf("empty name = %d, saved %v", rec.Code, f.saved)
+	}
+	rec := do(r, http.MethodPatch, "/admin/pickup-offices/"+id, `{"active":false}`)
+	if rec.Code != 200 || f.saved == nil || f.saved.Active || f.saved.Hours != "9-5" {
+		t.Fatalf("patch = %d %s, saved %+v", rec.Code, rec.Body, f.saved)
+	}
+	missing := "0192f3a4-5b6c-7d8e-9f01-000000000000"
+	if rec := do(r, http.MethodPatch, "/admin/pickup-offices/"+missing, `{"active":true}`); rec.Code != 404 {
+		t.Fatalf("missing office = %d", rec.Code)
 	}
 }
 
