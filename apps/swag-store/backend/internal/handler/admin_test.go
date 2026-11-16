@@ -477,3 +477,24 @@ func TestFieldPatchOfUnknownProductIs404(t *testing.T) {
 		t.Fatalf("= %d, want 404", rec.Code)
 	}
 }
+
+// A date-only "to" is the whole day: the bound moves to the next midnight,
+// because the query keeps placed_at < to.
+func TestOrderSearchDateOnlyToIncludesThatDay(t *testing.T) {
+	var b searchBody
+	b.Filters.From, b.Filters.To = "2026-11-10", "2026-11-10"
+	f, err := b.filter()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := time.Date(2026, 11, 10, 0, 0, 0, 0, time.UTC); !f.From.Equal(want) {
+		t.Errorf("from = %v, want %v", f.From, want)
+	}
+	if want := time.Date(2026, 11, 11, 0, 0, 0, 0, time.UTC); !f.To.Equal(want) {
+		t.Errorf("date-only to = %v, want %v", f.To, want)
+	}
+	b.Filters.To = "2026-11-10T15:04:05Z"
+	if f, err = b.filter(); err != nil || !f.To.Equal(time.Date(2026, 11, 10, 15, 4, 5, 0, time.UTC)) {
+		t.Errorf("instant to = %v %v, want it unchanged", f.To, err)
+	}
+}

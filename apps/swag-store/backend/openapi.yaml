@@ -2227,8 +2227,10 @@ components:
               description: "Order number or email"
             from:
               type: "string"
+              description: "Orders placed at or after this time: an RFC 3339 time, or a date (UTC midnight)"
             to:
               type: "string"
+              description: "Orders placed before this time: an RFC 3339 time, or a date, which includes that whole day (UTC)"
         pagination:
           type: "object"
           properties:

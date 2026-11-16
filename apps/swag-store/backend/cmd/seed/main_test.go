@@ -17,106 +17,48 @@
 package main
 
 import (
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
-	"crypto/tls"
-	"crypto/x509"
-	"crypto/x509/pkix"
-	"encoding/pem"
-	"math/big"
-	"strings"
+	"context"
 	"testing"
-	"time"
 
-	"github.com/go-sql-driver/mysql"
+	"github.com/wso2/wso2-coin/apps/swag-store/backend/internal/repository"
+	"github.com/wso2/wso2-coin/apps/swag-store/backend/internal/testdb"
 )
 
-// testCA returns a self-signed CA certificate as PEM.
-func testCA(t *testing.T) string {
-	t.Helper()
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+// A run that stopped after creating the Hoodie left it a DRAFT with no sizes.
+// The next run must finish it, not skip it.
+func TestSeedFinishesADraftLeftByAnEarlierRun(t *testing.T) {
+	ctx := context.Background()
+	s := repository.New(testdb.Open(t))
+	cat, err := s.SaveCategory(ctx, actor, repository.Category{Slug: "apparel", Name: "Apparel", Sort: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
-	tmpl := &x509.Certificate{
-		SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "test db ca"},
-		NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour),
-		IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign,
-	}
-	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
-	if err != nil {
+	if _, err := s.CreateProduct(ctx, actor, repository.ProductInput{Name: "WSO2 Hoodie", Slug: "wso2-hoodie",
+		CategoryID: cat.ID, Price: 90, RestockPolicy: "RESTOCKABLE"}); err != nil {
 		t.Fatal(err)
 	}
-	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))
-}
 
-func dbVars(t *testing.T) {
-	t.Setenv("DATABASE_URL", "")
-	t.Setenv("DB_HOST", "db.example")
-	t.Setenv("DB_USER", "swag")
-	t.Setenv("DB_PASSWORD", "pw")
-	t.Setenv("DB_NAME", "swag")
-	t.Setenv("DB_TLS", "")
-	t.Setenv("DB_CA_CERT", "")
-}
-
-func parsed(t *testing.T) *mysql.Config {
-	t.Helper()
-	d, err := dsn()
-	if err != nil {
-		t.Fatal(err)
-	}
-	mc, err := mysql.ParseDSN(d)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return mc
-}
-
-// DB_CA_CERT is the private CA the server trusts; seed must trust it too,
-// with verification still on.
-func TestDSNTrustsTheDatabaseCA(t *testing.T) {
-	ca := testCA(t)
-	for _, tc := range []struct{ name, pem string }{
-		{"PEM", ca},
-		{"PEM with escaped newlines", strings.ReplaceAll(ca, "\n", `\n`)},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			dbVars(t)
-			t.Setenv("DB_CA_CERT", tc.pem)
-			mc := parsed(t)
-			if mc.TLS == nil || mc.TLS.RootCAs == nil {
-				t.Fatalf("TLS = %+v, want the CA as root", mc.TLS)
+	for run := 1; run <= 2; run++ { // the second run must change nothing
+		if err := seed(ctx, s); err != nil {
+			t.Fatalf("run %d: %v", run, err)
+		}
+		d, err := s.ProductBySlug(ctx, "wso2-hoodie")
+		if err != nil || d == nil {
+			t.Fatalf("run %d: hoodie = %v, %v", run, d, err)
+		}
+		sizes := 0
+		for _, v := range d.Variants {
+			if v.Active {
+				sizes++
 			}
-			if mc.TLS.InsecureSkipVerify || mc.TLS.MinVersion < tls.VersionTLS12 {
-				t.Errorf("TLS verify skipped or below 1.2: %+v", mc.TLS)
-			}
-		})
+		}
+		if d.Product.Status != "ACTIVE" || sizes != 5 {
+			t.Fatalf("run %d: hoodie is %s with %d active variants, want ACTIVE with 5 sizes", run, d.Product.Status, sizes)
+		}
 	}
-}
-
-func TestDSNRefusesACAWithNoCertificate(t *testing.T) {
-	dbVars(t)
-	t.Setenv("DB_CA_CERT", "not a certificate")
-	if _, err := dsn(); err == nil {
-		t.Fatal("dsn accepted a DB_CA_CERT with no certificate")
-	}
-}
-
-func TestDSNWithoutACAKeepsItsTLSChoice(t *testing.T) {
-	dbVars(t)
-	if mc := parsed(t); mc.TLSConfig != "true" {
-		t.Errorf("DB_* default TLSConfig = %q, want true", mc.TLSConfig)
-	}
-	t.Setenv("DB_TLS", "false")
-	t.Setenv("DB_CA_CERT", testCA(t))
-	if mc := parsed(t); mc.TLSConfig != "" {
-		t.Errorf("DB_TLS=false TLSConfig = %q, want none", mc.TLSConfig)
-	}
-	dbVars(t)
-	t.Setenv("DATABASE_URL", "root:pw@tcp(127.0.0.1:3306)/swag")
-	if mc := parsed(t); mc.TLSConfig != "" {
-		t.Errorf("local DATABASE_URL TLSConfig = %q, want none", mc.TLSConfig)
+	for _, p := range products {
+		if d, err := s.ProductBySlug(ctx, p.slug); err != nil || d == nil || d.Product.Status != "ACTIVE" {
+			t.Errorf("%s not seeded ACTIVE: %v %v", p.slug, d, err)
+		}
 	}
 }

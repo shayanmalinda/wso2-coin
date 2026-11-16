@@ -98,6 +98,12 @@ func (b searchBody) filter() (repository.OrderFilter, error) {
 	if f.To, err = parseTime(b.Filters.To); err != nil {
 		return f, errors.New("filters.to must be a date or RFC 3339 time.")
 	}
+	// The query keeps placed_at < to, so a date-only "to" ends at the next
+	// midnight and takes in the whole of that day.
+	if f.To != nil && len(strings.TrimSpace(b.Filters.To)) == len(time.DateOnly) {
+		next := f.To.AddDate(0, 0, 1)
+		f.To = &next
+	}
 	if f.Limit == 0 {
 		f.Limit = 20
 	}
