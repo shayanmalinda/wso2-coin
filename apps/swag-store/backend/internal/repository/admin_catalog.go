@@ -797,3 +797,17 @@ func (s *Store) RecordPhotoUpload(ctx context.Context, a Actor, productID string
 		return audit(ctx, q, a, "product_image_uploaded", "product", productID, d)
 	})
 }
+
+// PhotoPathsInUse is every photo path a product uses, whatever its status, so
+// the photo cleanup never deletes one.
+func (s *Store) PhotoPathsInUse(ctx context.Context) (map[string]bool, error) {
+	paths, err := s.q.ListImagePaths(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]bool, len(paths))
+	for _, p := range paths {
+		out[p] = true
+	}
+	return out, nil
+}

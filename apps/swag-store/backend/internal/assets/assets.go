@@ -210,6 +210,53 @@ func (c *Client) Put(ctx context.Context, path string, body []byte, contentType 
 	return nil
 }
 
+// StoredPhoto is one blob under the photo prefix, with when it last changed.
+type StoredPhoto struct {
+	Path     string
+	Modified time.Time
+}
+
+// photoPrefix is where every product photo lives (catalog.NewPhotoPath).
+const photoPrefix = "products/"
+
+// ListPhotos lists every blob under products/, page by page.
+func (c *Client) ListPhotos(ctx context.Context) ([]StoredPhoto, error) {
+	if c.disabled {
+		return nil, ErrNotConfigured
+	}
+	var out []StoredPhoto
+	pager := c.blobs.NewListBlobsFlatPager(&container.ListBlobsFlatOptions{Prefix: to.Ptr(photoPrefix)})
+	for pager.More() {
+		pageCtx, cancel := context.WithTimeout(ctx, c.timeout)
+		page, err := pager.NextPage(pageCtx)
+		cancel()
+		if err != nil {
+			return nil, describe("list", err)
+		}
+		for _, b := range page.Segment.BlobItems {
+			if b.Name == nil || b.Properties == nil || b.Properties.LastModified == nil {
+				continue
+			}
+			out = append(out, StoredPhoto{Path: *b.Name, Modified: *b.Properties.LastModified})
+		}
+	}
+	return out, nil
+}
+
+// Delete removes one photo. A photo that is already gone counts as deleted.
+func (c *Client) Delete(ctx context.Context, path string) error {
+	if c.disabled {
+		return ErrNotConfigured
+	}
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+	_, err := c.blobs.NewBlobClient(path).Delete(ctx, nil)
+	if err != nil && !bloberror.HasCode(err, bloberror.BlobNotFound) {
+		return describe("delete", err)
+	}
+	return nil
+}
+
 // EnsureContainer creates the container if it isn't there. Only the local
 // seed uses it; in Azure, ops create the container.
 func (c *Client) EnsureContainer(ctx context.Context) error {

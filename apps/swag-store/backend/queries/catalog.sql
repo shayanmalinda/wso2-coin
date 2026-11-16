@@ -203,6 +203,9 @@ JOIN swag_product_options o ON o.id = ov.option_id
 WHERE vov.variant_id IN (sqlc.slice(variant_ids))
 ORDER BY vov.variant_id, o.sort, o.name;
 
+-- name: ListImagePaths :many
+SELECT path FROM swag_product_images;
+
 -- name: FirstImagesForProducts :many
 SELECT product_id, path FROM swag_product_images
 WHERE product_id IN (sqlc.slice(product_ids))

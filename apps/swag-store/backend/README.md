@@ -19,7 +19,7 @@ One WSO2 ──► Choreo gateway ──x-jwt-assertion──► Gin router
                           │           └──► repository ──► MySQL (sqlc in internal/store)
                           └──► hr (HR Entity GraphQL, 1 h cache)
 jobs (GET_LOCK per job): outbox → notifications (email-service), payment reconciler, treasury check
-and reconcile, pickup reminders, uncollected flag, stats, low-stock digest
+and reconcile, pickup reminders, uncollected flag, stats, low-stock digest, photo cleanup
 ```
 
 | Package | Role |
@@ -84,6 +84,11 @@ curl -H "x-jwt-assertion: $JWT" -F view=front -F file=@photo.jpg \
 
 In Azure, ops create the container and give the backend identity **Storage Blob Data Contributor** on the
 container and **Storage Blob Delegator** on the account; no key or SAS is configured.
+
+Every upload is a new blob, so a photo that a save replaces or removes, or that is never saved, stays in the
+container. The nightly `photo-cleanup` job (04:00 UTC, only when photos are set up) deletes photos under
+`products/` that no product uses and that are more than 7 days old. The 7 days cover an editor left open
+without saving. Contributor already allows the deletes.
 
 ### Postman
 

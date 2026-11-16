@@ -161,7 +161,7 @@ func run() error {
 	var runner *jobs.Runner
 	if cfg.JobsEnabled {
 		common := notifications.Common{StoreURL: cfg.WebURL, ContactEmail: cfg.ContactEmail, Timezone: cfg.Timezone}
-		jobList := backgroundJobs(cfg, repo, svc, coinsClient, sender, common)
+		jobList := backgroundJobs(cfg, repo, svc, coinsClient, sender, common, photos)
 		// Job locks get their own pool: a job holds its lock connection while
 		// it works on the main pool, which may be as small as one connection.
 		lockDB, err := openDB(ctx, cfg)

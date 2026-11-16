@@ -640,6 +640,33 @@ func (q *Queries) ListCategories(ctx context.Context) ([]Category, error) {
 	return items, nil
 }
 
+const listImagePaths = `-- name: ListImagePaths :many
+SELECT path FROM swag_product_images
+`
+
+func (q *Queries) ListImagePaths(ctx context.Context) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listImagePaths)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var path string
+		if err := rows.Scan(&path); err != nil {
+			return nil, err
+		}
+		items = append(items, path)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listImagesByProduct = `-- name: ListImagesByProduct :many
 SELECT id, product_id, photo_view, path, alt, option_value_id, sort FROM swag_product_images WHERE product_id = ? ORDER BY sort, id
 `

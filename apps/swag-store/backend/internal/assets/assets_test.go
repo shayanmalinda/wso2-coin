@@ -139,3 +139,77 @@ func TestDescribeKeepsReasonsNotQueries(t *testing.T) {
 		t.Fatalf("timeout = %v", timeout)
 	}
 }
+
+// listPage is one List Blobs answer: the blobs and the marker for the next page.
+func listPage(next string, names ...string) string {
+	var b strings.Builder
+	b.WriteString(`<?xml version="1.0" encoding="utf-8"?><EnumerationResults ContainerName="swag-store-assets"><Prefix>products/</Prefix><Blobs>`)
+	for _, n := range names {
+		b.WriteString(`<Blob><Name>` + n + `</Name><Properties><Last-Modified>Mon, 09 Nov 2026 10:00:00 GMT</Last-Modified></Properties></Blob>`)
+	}
+	b.WriteString(`</Blobs><NextMarker>` + next + `</NextMarker></EnumerationResults>`)
+	return b.String()
+}
+
+func TestListAndDeletePhotos(t *testing.T) {
+	const a, b = "products/p1/front-00000001.jpg", "products/p2/back-00000002.png"
+	var lists []url.Values
+	var deletes []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Query().Get("comp") == "list":
+			lists = append(lists, r.URL.Query())
+			w.Header().Set("Content-Type", "application/xml")
+			if r.URL.Query().Get("marker") == "" {
+				_, _ = io.WriteString(w, listPage("page-2", a))
+			} else {
+				_, _ = io.WriteString(w, listPage("", b))
+			}
+		case r.Method == http.MethodDelete:
+			deletes = append(deletes, strings.TrimPrefix(r.URL.Path, "/devstoreaccount1/swag-store-assets/"))
+			switch {
+			case strings.HasSuffix(r.URL.Path, "gone.jpg"):
+				w.Header().Set("x-ms-error-code", "BlobNotFound")
+				w.WriteHeader(http.StatusNotFound)
+			case strings.HasSuffix(r.URL.Path, "broken.jpg"):
+				w.Header().Set("x-ms-error-code", "InternalError")
+				w.WriteHeader(http.StatusInternalServerError)
+			default:
+				w.WriteHeader(http.StatusAccepted)
+			}
+		default:
+			w.WriteHeader(http.StatusBadRequest)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	c := newSharedKeyClient(t, srv.URL+"/devstoreaccount1", "swag-store-assets")
+	ctx := context.Background()
+
+	got, err := c.ListPhotos(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].Path != a || got[1].Path != b || got[0].Modified.IsZero() {
+		t.Fatalf("listed = %+v", got)
+	}
+	if len(lists) != 2 || lists[0].Get("prefix") != "products/" || lists[1].Get("marker") != "page-2" {
+		t.Fatalf("list calls = %v", lists)
+	}
+
+	if err := c.Delete(ctx, a); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Delete(ctx, "products/p1/front-gone.jpg"); err != nil {
+		t.Fatalf("already gone = %v, want nil", err)
+	}
+	if err := c.Delete(ctx, "products/p1/front-broken.jpg"); err == nil {
+		t.Fatal("a 500 delete reported success")
+	}
+	if len(deletes) != 3 || deletes[0] != a {
+		t.Fatalf("deletes = %v", deletes)
+	}
+
+	if _, err := Disabled().ListPhotos(ctx); !errors.Is(err, ErrNotConfigured) {
+		t.Fatalf("disabled list = %v", err)
+	}
+}

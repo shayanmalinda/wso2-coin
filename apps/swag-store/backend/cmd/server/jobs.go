@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/wso2/wso2-coin/apps/swag-store/backend/internal/assets"
 	"github.com/wso2/wso2-coin/apps/swag-store/backend/internal/checkout"
 	"github.com/wso2/wso2-coin/apps/swag-store/backend/internal/coins"
 	"github.com/wso2/wso2-coin/apps/swag-store/backend/internal/jobs"
@@ -51,11 +52,11 @@ func treasuryCheck(g treasuryRefresher) func(ctx context.Context) error {
 
 // backgroundJobs is the job table (backend-spec §9).
 func backgroundJobs(cfg *Config, repo *repository.Store, svc *checkout.Service, ledger *coins.Client,
-	sender notifications.Sender, common notifications.Common) []jobs.Job {
+	sender notifications.Sender, common notifications.Common, photos *assets.Client) []jobs.Job {
 	outbox := jobs.NewOutbox(repo, sender, common, cfg.ContactEmail)
 	reconcile := jobs.NewTreasuryReconcile(ledger, repo, svc, cfg.TreasuryWallet)
 	days := func(n int) time.Duration { return time.Duration(n) * 24 * time.Hour }
-	return []jobs.Job{
+	list := []jobs.Job{
 		{Name: "outbox", Every: 15 * time.Second, Run: simple(outbox.Run)},
 		{Name: "payment-reconciler", Every: 30 * time.Second, Run: simple(jobs.PaymentReconciler(repo, svc, time.Now))},
 		{Name: "treasury-check", Every: 10 * time.Minute, Run: simple(treasuryCheck(svc.Treasury()))},
@@ -81,4 +82,9 @@ func backgroundJobs(cfg *Config, repo *repository.Store, svc *checkout.Service, 
 				notifications.LowStockDigest{Threshold: cfg.LowStockThreshold, Items: items}, "digest:"+day)
 		})},
 	}
+	if photos.Health() != assets.HealthNotConfigured {
+		list = append(list, jobs.Job{Name: "photo-cleanup", Daily: &jobs.Daily{Hour: 4, Loc: time.UTC},
+			Run: simple(jobs.PhotoCleanup(repo, photos, time.Now))})
+	}
+	return list
 }

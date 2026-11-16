@@ -723,6 +723,29 @@ func TestJobLockWorksWithAOneConnectionPool(t *testing.T) {
 	}
 }
 
+// The photo cleanup keeps every path a product uses, a removed product's too.
+func TestPhotoPathsInUse(t *testing.T) {
+	f := newFixture(t, 0)
+	ctx := context.Background()
+	front := "products/" + f.productID + "/front-3f9a2c1d.jpg"
+	if _, err := f.s.UpdateProduct(ctx, admin, f.productID, func(in *repository.ProductInput) error {
+		in.Images = []repository.ImageInput{{View: "front", Path: front}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.s.SetProductStatus(ctx, admin, f.productID, "REMOVED", "gone"); err != nil {
+		t.Fatal(err)
+	}
+	inUse, err := f.s.PhotoPathsInUse(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(inUse) != 1 || !inUse[front] {
+		t.Fatalf("in use = %v, want only %s", inUse, front)
+	}
+}
+
 // Photos are stored one per view and read back in gallery order, and an
 // upload is audited without touching the product.
 func TestPhotosStoredInViewOrder(t *testing.T) {
