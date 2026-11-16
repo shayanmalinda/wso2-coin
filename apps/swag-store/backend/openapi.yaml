@@ -301,6 +301,8 @@ paths:
           "$ref": "#/components/responses/Error"
         "413":
           "$ref": "#/components/responses/Error"
+        "429":
+          "$ref": "#/components/responses/Error"
         "503":
           "$ref": "#/components/responses/Error"
   /orders:
@@ -318,7 +320,7 @@ paths:
         content:
           application/json:
             schema:
-              "$ref": "#/components/schemas/CheckoutInput"
+              "$ref": "#/components/schemas/PlaceOrderInput"
       responses:
         "201":
           description: "Created"
@@ -1605,6 +1607,24 @@ components:
       required:
         - "pickupOfficeId"
         - "walletAddress"
+      additionalProperties: false
+    PlaceOrderInput:
+      type: "object"
+      description: "A CheckoutInput whose expectedTotal is required, so a price that rose after the quote is always caught"
+      properties:
+        pickupOfficeId:
+          type: "string"
+          format: "uuid"
+        walletAddress:
+          type: "string"
+        expectedTotal:
+          type: "integer"
+          format: "int64"
+          description: "The total the shopper confirmed (the quote's total). A different total is 409 quote_changed"
+      required:
+        - "pickupOfficeId"
+        - "walletAddress"
+        - "expectedTotal"
       additionalProperties: false
       description: "There is no payee field: the store always pays its pinned treasury"
     Problem:

@@ -69,12 +69,27 @@ func orderNoParam(c *gin.Context) (string, bool) {
 	return no, true
 }
 
-// checkoutBody is the body of POST /quotes and POST /orders. It has no payee
-// field, and the strict decoder refuses one (backend-spec §8.7).
+// checkoutBody is the body of POST /quotes, and of POST /orders inside
+// placeBody. It has no payee field, and the strict decoder refuses one
+// (backend-spec §8.7).
 type checkoutBody struct {
 	PickupOfficeID string `json:"pickupOfficeId"`
 	WalletAddress  string `json:"walletAddress"`
 	ExpectedTotal  *int64 `json:"expectedTotal"`
+}
+
+// placeBody is the body of POST /orders: a checkout body whose expectedTotal is
+// required, so a price that rose after the quote is always caught.
+type placeBody struct{ checkoutBody }
+
+func (b placeBody) validate() error {
+	if err := b.checkoutBody.validate(); err != nil {
+		return err
+	}
+	if b.ExpectedTotal == nil {
+		return errors.New("expectedTotal is required.")
+	}
+	return nil
 }
 
 func (b checkoutBody) validate() error {
@@ -167,7 +182,7 @@ func (h *OrdersHandler) Place(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, ErrMsgIdempotencyMissing)
 		return
 	}
-	var b checkoutBody
+	var b placeBody
 	if !readJSON(c, &b) {
 		return
 	}
@@ -215,6 +230,8 @@ func failureError(code string) error {
 		return checkout.ErrInsufficientFunds
 	case checkout.CodeWalletNotOwned:
 		return checkout.ErrWalletNotOwned
+	case checkout.CodePaymentMismatch:
+		return checkout.ErrPaymentMismatch
 	}
 	return checkout.ErrPaymentFailed
 }
@@ -235,7 +252,9 @@ func (h *OrdersHandler) writeCheckoutError(c *gin.Context, err error, _ *reposit
 		writeErrorCode(c, http.StatusPaymentRequired, ErrMsgInsufficientFunds, CodeInsufficientFunds)
 	case errors.Is(err, checkout.ErrWalletNotOwned):
 		writeErrorCode(c, http.StatusForbidden, ErrMsgWalletNotOwned, CodeWalletNotOwned)
-	case errors.Is(err, checkout.ErrPaymentFailed), errors.Is(err, checkout.ErrPaymentMismatch):
+	case errors.Is(err, checkout.ErrPaymentMismatch):
+		writeErrorCode(c, http.StatusPaymentRequired, ErrMsgPaymentMismatch, CodePaymentMismatch)
+	case errors.Is(err, checkout.ErrPaymentFailed):
 		writeErrorCode(c, http.StatusPaymentRequired, ErrMsgPaymentFailed, CodePaymentFailed)
 	case errors.Is(err, checkout.ErrStateConflict):
 		writeErrorCode(c, http.StatusConflict, ErrMsgStateConflict, CodeStateConflict)
