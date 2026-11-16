@@ -26,8 +26,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/go-sql-driver/mysql"
+	_ "github.com/go-sql-driver/mysql" // registers the "mysql" driver
 
+	"github.com/wso2/wso2-coin/apps/swag-store/backend/internal/dbconn"
 	"github.com/wso2/wso2-coin/apps/swag-store/backend/internal/migrate"
 	"github.com/wso2/wso2-coin/apps/swag-store/backend/migrations"
 )
@@ -64,30 +65,12 @@ func run() error {
 	return nil
 }
 
-// migrationDSN reads DATABASE_URL, or DB_HOST, DB_PORT, DB_USER, DB_PASSWORD
-// and DB_NAME, and enables multi-statement files.
+// migrationDSN is the tools' connection (dbconn.ToolConfig) with
+// multi-statement files enabled.
 func migrationDSN() (string, error) {
-	var mc *mysql.Config
-	if raw := os.Getenv("DATABASE_URL"); raw != "" {
-		parsed, err := mysql.ParseDSN(raw)
-		if err != nil {
-			return "", fmt.Errorf("DATABASE_URL: %w", err)
-		}
-		mc = parsed
-	} else {
-		mc = mysql.NewConfig()
-		host, port := os.Getenv("DB_HOST"), os.Getenv("DB_PORT")
-		if port == "" {
-			port = "3306"
-		}
-		if host == "" || os.Getenv("DB_USER") == "" || os.Getenv("DB_NAME") == "" {
-			return "", fmt.Errorf("set DATABASE_URL, or DB_HOST, DB_USER, DB_PASSWORD and DB_NAME")
-		}
-		mc.Net, mc.Addr = "tcp", host+":"+port
-		mc.User, mc.Passwd, mc.DBName = os.Getenv("DB_USER"), os.Getenv("DB_PASSWORD"), os.Getenv("DB_NAME")
-		if os.Getenv("DB_TLS") != "false" {
-			mc.TLSConfig = "true"
-		}
+	mc, err := dbconn.ToolConfig(os.Getenv)
+	if err != nil {
+		return "", err
 	}
 	mc.MultiStatements = true
 	mc.ParseTime = true

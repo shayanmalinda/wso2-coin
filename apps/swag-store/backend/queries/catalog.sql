@@ -27,6 +27,9 @@ SELECT * FROM swag_categories ORDER BY sort, name;
 -- name: GetCategory :one
 SELECT * FROM swag_categories WHERE id = ?;
 
+-- name: LockCategory :one
+SELECT * FROM swag_categories WHERE id = ? FOR UPDATE;
+
 -- name: CreateCategory :exec
 INSERT INTO swag_categories (id, slug, name, sort) VALUES (?, ?, ?, ?);
 
