@@ -16,8 +16,9 @@
 
 // Command seed loads the launch catalog (the 7 Phase 1 rewards, design §2.1)
 // and the pickup offices. It is idempotent: a category, product or office that
-// already exists (by slug or name) is left alone. Products are created ACTIVE
-// with no stock; Catalog Managers receive stock in the admin app.
+// already exists (by slug or name) is left alone, except a product an earlier
+// run left as a DRAFT, which it finishes. Products are created ACTIVE with no
+// stock; Catalog Managers receive stock in the admin app.
 //
 // The sizes, restock policies and office list are placeholders until People
 // Ops confirms them (design Q11).
@@ -25,18 +26,16 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"database/sql"
 	"errors"
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
-	"github.com/go-sql-driver/mysql"
+	_ "github.com/go-sql-driver/mysql" // registers the "mysql" driver
 
 	"github.com/wso2/wso2-coin/apps/swag-store/backend/internal/assets"
+	"github.com/wso2/wso2-coin/apps/swag-store/backend/internal/dbconn"
 	"github.com/wso2/wso2-coin/apps/swag-store/backend/internal/httpsec"
 	"github.com/wso2/wso2-coin/apps/swag-store/backend/internal/repository"
 )
@@ -81,38 +80,9 @@ func main() {
 }
 
 func dsn() (string, error) {
-	var mc *mysql.Config
-	if raw := os.Getenv("DATABASE_URL"); raw != "" {
-		parsed, err := mysql.ParseDSN(raw)
-		if err != nil {
-			return "", fmt.Errorf("DATABASE_URL: %w", err)
-		}
-		mc = parsed
-	} else {
-		if os.Getenv("DB_HOST") == "" {
-			return "", errors.New("set DATABASE_URL, or DB_HOST, DB_USER, DB_PASSWORD and DB_NAME")
-		}
-		mc = mysql.NewConfig()
-		port := os.Getenv("DB_PORT")
-		if port == "" {
-			port = "3306"
-		}
-		mc.Net, mc.Addr = "tcp", os.Getenv("DB_HOST")+":"+port
-		mc.User, mc.Passwd, mc.DBName = os.Getenv("DB_USER"), os.Getenv("DB_PASSWORD"), os.Getenv("DB_NAME")
-		if os.Getenv("DB_TLS") != "false" {
-			mc.TLSConfig = "true"
-		}
-	}
-	// DB_CA_CERT is the private CA the server trusts (PEM, `\n` allowed).
-	if pem := os.Getenv("DB_CA_CERT"); pem != "" && os.Getenv("DB_TLS") != "false" {
-		pool := x509.NewCertPool()
-		if !pool.AppendCertsFromPEM([]byte(strings.ReplaceAll(pem, `\n`, "\n"))) {
-			return "", errors.New("DB_CA_CERT holds no PEM certificate")
-		}
-		if err := mysql.RegisterTLSConfig("swag", &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}); err != nil {
-			return "", fmt.Errorf("DB_CA_CERT: %w", err)
-		}
-		mc.TLSConfig = "swag"
+	mc, err := dbconn.ToolConfig(os.Getenv)
+	if err != nil {
+		return "", err
 	}
 	mc.ParseTime, mc.Loc = true, time.UTC
 	return mc.FormatDSN(), nil
@@ -130,8 +100,14 @@ func run() error {
 	defer db.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	s := repository.New(db)
+	if err := seed(ctx, repository.New(db)); err != nil {
+		return err
+	}
+	return photoContainer(ctx)
+}
 
+// seed adds whatever of the launch catalog and offices is missing.
+func seed(ctx context.Context, s *repository.Store) error {
 	existingCats, err := s.Categories(ctx)
 	if err != nil {
 		return err
@@ -157,24 +133,32 @@ func run() error {
 		if err != nil {
 			return err
 		}
-		if existing != nil {
+		var id string
+		switch {
+		case existing == nil:
+			d, err := s.CreateProduct(ctx, actor, repository.ProductInput{Name: p.name, Slug: p.slug, CategoryID: catID[p.category],
+				Price: p.price, RestockPolicy: p.policy})
+			if err != nil {
+				return fmt.Errorf("product %s: %w", p.slug, err)
+			}
+			id = d.Product.ID
+		case existing.Product.Status == "DRAFT":
+			// A seeded product is DRAFT only when an earlier run stopped before
+			// publishing it: finish it. Setting the same sizes again keeps them.
+			id = existing.Product.ID
+		default:
 			continue
-		}
-		d, err := s.CreateProduct(ctx, actor, repository.ProductInput{Name: p.name, Slug: p.slug, CategoryID: catID[p.category],
-			Price: p.price, RestockPolicy: p.policy})
-		if err != nil {
-			return fmt.Errorf("product %s: %w", p.slug, err)
 		}
 		if len(p.sizes) > 0 {
 			opt := repository.OptionInput{Name: "Size"}
 			for _, v := range p.sizes {
 				opt.Values = append(opt.Values, repository.OptionValueInput{Value: v})
 			}
-			if _, err := s.SetOptions(ctx, actor, d.Product.ID, []repository.OptionInput{opt}); err != nil {
+			if _, err := s.SetOptions(ctx, actor, id, []repository.OptionInput{opt}); err != nil {
 				return fmt.Errorf("options %s: %w", p.slug, err)
 			}
 		}
-		if err := s.SetProductStatus(ctx, actor, d.Product.ID, "ACTIVE", ""); err != nil {
+		if err := s.SetProductStatus(ctx, actor, id, "ACTIVE", ""); err != nil {
 			return fmt.Errorf("publish %s: %w", p.slug, err)
 		}
 		fmt.Println("product", p.slug)
@@ -197,7 +181,7 @@ func run() error {
 		}
 		fmt.Println("office", o.Name)
 	}
-	return photoContainer(ctx)
+	return nil
 }
 
 // photoContainer creates the photo container in the local emulator. It runs

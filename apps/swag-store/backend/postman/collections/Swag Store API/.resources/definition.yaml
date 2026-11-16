@@ -33,7 +33,7 @@ variables:
   description: Set by Quote; Place order refuses a changed total
 - key: orderNo
   value: ''
-  description: Set by Place order and List my orders (SS-nnnnn)
+  description: Set by Place order and List my orders (SS-nnnnn), or by Admin › Search orders when still empty
 - key: alertId
   value: ''
   description: Set by Create alert
@@ -45,7 +45,7 @@ variables:
   description: Set by Admin › Create category
 - key: adminProductId
   value: ''
-  description: Set by Admin › Create product and List products
+  description: Set by Admin › Create product
 - key: draftProductId
   value: ''
   description: Set by Admin › Create throwaway draft (deleted by Delete draft)
@@ -54,7 +54,7 @@ variables:
   description: Set by Admin › Create product and Set options
 - key: adminOfficeId
   value: ''
-  description: Set by Admin › Create office and List offices
+  description: Set by Admin › Create office
 auth:
   type: apikey
   credentials:

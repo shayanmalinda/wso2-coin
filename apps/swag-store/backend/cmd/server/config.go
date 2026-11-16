@@ -18,8 +18,6 @@ package main
 
 import (
 	"bufio"
-	"crypto/tls"
-	"crypto/x509"
 	"errors"
 	"fmt"
 	"net/url"
@@ -32,6 +30,7 @@ import (
 	"github.com/go-sql-driver/mysql"
 
 	"github.com/wso2/wso2-coin/apps/swag-store/backend/internal/assets"
+	"github.com/wso2/wso2-coin/apps/swag-store/backend/internal/dbconn"
 	"github.com/wso2/wso2-coin/apps/swag-store/backend/internal/handler"
 	"github.com/wso2/wso2-coin/apps/swag-store/backend/internal/httpsec"
 	"github.com/wso2/wso2-coin/apps/swag-store/backend/internal/middleware"
@@ -344,13 +343,11 @@ func databaseDSN(e *envReader) string {
 	mc.Params["sql_mode"] = sqlMode
 	if e.boolOn("DB_TLS") {
 		if pem := e.str("DB_CA_CERT"); pem != "" {
-			pool := x509.NewCertPool()
-			if !pool.AppendCertsFromPEM([]byte(strings.ReplaceAll(pem, `\n`, "\n"))) {
-				e.errs = append(e.errs, errors.New("DB_CA_CERT holds no PEM certificate"))
-			} else if err := mysql.RegisterTLSConfig("swag", &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}); err != nil {
-				e.errs = append(e.errs, fmt.Errorf("DB_CA_CERT: %w", err))
+			name, err := dbconn.TrustCA(pem)
+			if err != nil {
+				e.errs = append(e.errs, err)
 			}
-			mc.TLSConfig = "swag"
+			mc.TLSConfig = name
 		} else {
 			mc.TLSConfig = "true"
 		}
