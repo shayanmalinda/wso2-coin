@@ -33,6 +33,9 @@ type rateLimit struct {
 
 var (
 	limitOrders = &rateLimit{"orders", 5}
+	// Each quote calls HR, the wallets and the treasury check; the checkout
+	// page asks again when the office or wallet changes.
+	limitQuotes = &rateLimit{"quotes", 20}
 	limitCart   = &rateLimit{"cart", 30}
 	limitAlerts = &rateLimit{"alerts", 30}
 )
@@ -87,7 +90,7 @@ func routeTable(a *app) []routeDef {
 		{patch, "/cart/lines/:id", permAuthn, limitCart, a.cart.UpdateLine},
 		{del, "/cart/lines/:id", permAuthn, limitCart, a.cart.DeleteLine},
 		{get, "/pickup-offices", permAuthn, nil, a.offices.List},
-		{post, "/quotes", permAuthn, nil, a.orders.Quote},
+		{post, "/quotes", permAuthn, limitQuotes, a.orders.Quote},
 		{post, "/orders", permAuthn, limitOrders, a.orders.Place},
 		{get, "/orders", permAuthn, nil, a.orders.List},
 		{get, "/orders/:orderNo", permAuthn, nil, a.orders.Get},
@@ -117,13 +120,15 @@ func newRouter(d routerDeps) *gin.Engine {
 	r.HandleMethodNotAllowed = true
 	r.ContextWithFallback = true
 	_ = r.SetTrustedProxies(nil)
+	// Logger and Recovery wrap CORS and auth, so a refused request is still
+	// logged and a panic there still answers the fixed 500.
 	r.Use(
 		middleware.SecurityHeaders(),
-		middleware.CORS(d.corsOrigins),
 		middleware.CorrelationID(),
-		d.auth,
 		middleware.Logger(),
 		middleware.Recovery(),
+		middleware.CORS(d.corsOrigins),
+		d.auth,
 	)
 	r.NoRoute(handler.NoRoute)
 	r.NoMethod(handler.NoMethod)
