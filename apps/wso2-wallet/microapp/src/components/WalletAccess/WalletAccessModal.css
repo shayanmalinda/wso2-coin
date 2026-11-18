@@ -167,6 +167,12 @@
   margin-top: 14px;
 }
 
+/* The add form stacks vertically, so the shared `flex: 1` would collapse the
+   email field's height here. */
+.wallet-access-add > .wallet-access-input {
+  flex: none;
+}
+
 .wallet-access-add .wallet-access-select {
   flex: 1;
 }
