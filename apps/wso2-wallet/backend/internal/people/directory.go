@@ -43,6 +43,10 @@ const (
 	retryAfterFailure = time.Minute
 	// refreshTimeout bounds one refresh of the whole employee list.
 	refreshTimeout = 90 * time.Second
+	// firstLoadWait is how long a search waits for the first load of the list
+	// before answering that the directory is unavailable. It stays under the
+	// server's write deadline so the caller always gets an answer.
+	firstLoadWait = 15 * time.Second
 )
 
 // Employee is one active employee as read from the HR entity.
@@ -68,6 +72,8 @@ type Directory struct {
 	employees []Employee
 	fetchedAt time.Time
 	failedAt  time.Time
+	// refreshing is open while a refresh is running; it closes when it ends.
+	refreshing chan struct{}
 }
 
 // NewDirectory returns a Directory over source that only returns people whose email
@@ -141,38 +147,73 @@ func (d *Directory) InCompany(email string) bool {
 	return strings.HasSuffix(strings.ToLower(strings.TrimSpace(email)), "@"+d.domain)
 }
 
-// list returns the cached employees, refreshing them when they are missing or old.
-// When a refresh fails and an older copy exists, the older copy is served.
+// list returns the cached employees. A missing or old copy is refreshed by one
+// shared background refresh that no caller's request can cancel. An old copy keeps
+// being served while that refresh runs, and when a refresh fails. With no copy at
+// all, a caller waits for the refresh for at most firstLoadWait, then gets
+// ErrUnavailable while the refresh carries on for the next caller.
 func (d *Directory) list(ctx context.Context) ([]Employee, error) {
 	d.mu.Lock()
-	defer d.mu.Unlock()
-
 	now := d.now()
 	fresh := d.employees != nil && now.Sub(d.fetchedAt) < cacheTTL
 	recentlyFailed := !d.failedAt.IsZero() && now.Sub(d.failedAt) < retryAfterFailure
 	if fresh || (recentlyFailed && d.employees != nil) {
-		return d.employees, nil
+		employees := d.employees
+		d.mu.Unlock()
+		return employees, nil
 	}
 	if recentlyFailed {
+		d.mu.Unlock()
 		return nil, ErrUnavailable
 	}
+	done := d.refreshing
+	if done == nil {
+		done = make(chan struct{})
+		d.refreshing = done
+		go d.refresh(done)
+	}
+	if d.employees != nil {
+		employees := d.employees
+		d.mu.Unlock()
+		return employees, nil
+	}
+	d.mu.Unlock()
 
-	// The refreshed list is shared by every caller, so it must not depend on the
-	// request that happened to trigger it: a caller who disconnects mid-refresh
-	// would otherwise fail it and mark the directory as down for everyone.
-	refreshCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), refreshTimeout)
-	defer cancel()
-	employees, err := d.source.Employees(refreshCtx)
-	if err != nil {
-		d.failedAt = now
-		slog.ErrorContext(ctx, "employee directory refresh failed", "err", err)
-		if d.employees != nil {
-			return d.employees, nil
-		}
+	timer := time.NewTimer(firstLoadWait)
+	defer timer.Stop()
+	select {
+	case <-done:
+	case <-timer.C:
+		return nil, ErrUnavailable
+	case <-ctx.Done():
 		return nil, ErrUnavailable
 	}
-	d.employees, d.fetchedAt, d.failedAt = employees, now, time.Time{}
-	return employees, nil
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.employees == nil {
+		return nil, ErrUnavailable
+	}
+	return d.employees, nil
+}
+
+// refresh reads the whole employee list and stores it, then releases everyone
+// waiting on done. It runs on its own context so a caller who disconnects cannot
+// fail it and mark the directory as down for everyone.
+func (d *Directory) refresh(done chan struct{}) {
+	ctx, cancel := context.WithTimeout(context.Background(), refreshTimeout)
+	defer cancel()
+	employees, err := d.source.Employees(ctx)
+
+	d.mu.Lock()
+	if err != nil {
+		d.failedAt = d.now()
+		slog.Error("employee directory refresh failed", "err", err)
+	} else {
+		d.employees, d.fetchedAt, d.failedAt = employees, d.now(), time.Time{}
+	}
+	d.refreshing = nil
+	d.mu.Unlock()
+	close(done)
 }
 
 func displayName(e Employee) string {

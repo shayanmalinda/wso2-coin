@@ -121,6 +121,7 @@ func TestDirectoryCachesAndSurvivesOutage(t *testing.T) {
 		if err != nil || len(got) == 0 {
 			t.Fatalf("Search during outage = %+v, %v; want stale results", got, err)
 		}
+		waitIdle(dir)
 	}
 	if src.calls != 2 {
 		t.Errorf("fetched %d times, want 2 (one failed refresh)", src.calls)
@@ -134,13 +135,64 @@ func TestRefreshIgnoresCallerCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	got, err := dir.Search(ctx, "anna", "")
+	// The cancelled caller may be told the directory is unavailable, but the
+	// shared refresh still completes for the next caller.
+	_, _ = dir.Search(ctx, "anna", "")
+	waitIdle(dir)
+	got, err := dir.Search(context.Background(), "anna", "")
 	if err != nil || len(got) == 0 {
-		t.Fatalf("Search with a cancelled caller = %+v, %v; want results", got, err)
+		t.Fatalf("next caller got %+v, %v; the directory should not be marked down", got, err)
 	}
-	if _, err := dir.Search(context.Background(), "anna", ""); err != nil {
-		t.Fatalf("next caller got %v; the directory should not be marked down", err)
+}
+
+// waitIdle waits for any background refresh to finish.
+func waitIdle(d *Directory) {
+	for {
+		d.mu.Lock()
+		done := d.refreshing
+		d.mu.Unlock()
+		if done == nil {
+			return
+		}
+		<-done
 	}
+}
+
+// Searches during a refresh share one upstream read, and an old copy is served
+// without waiting for it.
+func TestStaleCopyServedWhileRefreshRuns(t *testing.T) {
+	src := &blockingSource{employees: staff(), release: make(chan struct{}), started: make(chan struct{}, 4)}
+	dir := NewDirectory(src, "wso2.com")
+	now := time.Now()
+	dir.now = func() time.Time { return now }
+	dir.employees, dir.fetchedAt = staff(), now.Add(-cacheTTL-time.Second)
+
+	for i := 0; i < 3; i++ {
+		got, err := dir.Search(context.Background(), "anna", "")
+		if err != nil || len(got) == 0 {
+			t.Fatalf("Search = %+v, %v; want the old copy at once", got, err)
+		}
+	}
+	<-src.started
+	close(src.release)
+	waitIdle(dir)
+	if n := src.calls.Load(); n != 1 {
+		t.Errorf("refreshed %d times, want 1 shared refresh", n)
+	}
+}
+
+type blockingSource struct {
+	employees []Employee
+	release   chan struct{}
+	started   chan struct{}
+	calls     atomic.Int32
+}
+
+func (b *blockingSource) Employees(context.Context) ([]Employee, error) {
+	b.calls.Add(1)
+	b.started <- struct{}{}
+	<-b.release
+	return b.employees, nil
 }
 
 // ctxSource fails the way a real HTTP client does when its context is cancelled.
@@ -197,7 +249,7 @@ func TestClientPagesAndReusesToken(t *testing.T) {
 			http.Error(w, "filter not sent", http.StatusBadRequest)
 			return
 		}
-		var page []map[string]any
+		page := []map[string]any{}
 		if body.Variables.Offset == 0 {
 			page = []map[string]any{
 				{"workEmail": "a@wso2.com", "firstName": "A", "lastName": "One", "employeeThumbnail": nil},
@@ -237,5 +289,71 @@ func TestClientReportsGraphQLErrors(t *testing.T) {
 	c := NewClient(ClientConfig{Endpoint: srv.URL + "/graphql", TokenURL: srv.URL + "/token", ClientID: "id", ClientSecret: "secret"})
 	if _, err := c.Employees(context.Background()); err == nil {
 		t.Fatal("Employees succeeded, want the GraphQL error")
+	}
+}
+
+func newHRServer(t *testing.T, graphql http.HandlerFunc, token http.HandlerFunc) *Client {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /token", token)
+	mux.HandleFunc("POST /graphql", graphql)
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return NewClient(ClientConfig{Endpoint: srv.URL + "/graphql", TokenURL: srv.URL + "/token", ClientID: "id", ClientSecret: "secret"})
+}
+
+func okToken(w http.ResponseWriter, _ *http.Request) {
+	_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "tok", "expires_in": 3600})
+}
+
+// A page whose rows all lack a work email is not the end of the list.
+func TestClientKeepsPagingPastAnAllFilteredPage(t *testing.T) {
+	c := newHRServer(t, func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Variables struct {
+				Offset int `json:"offset"`
+			} `json:"variables"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		page := []map[string]any{}
+		switch body.Variables.Offset {
+		case 0:
+			for i := 0; i < pageSize; i++ {
+				page = append(page, map[string]any{"workEmail": "", "firstName": "No", "lastName": "Email"})
+			}
+		case pageSize:
+			page = append(page, map[string]any{"workEmail": "late@wso2.com", "firstName": "Late", "lastName": "Page"})
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"employees": page}})
+	}, okToken)
+	got, err := c.Employees(context.Background())
+	if err != nil || len(got) != 1 || got[0].Email != "late@wso2.com" {
+		t.Fatalf("Employees = %+v, %v; want the person on the second page", got, err)
+	}
+}
+
+// A success response without data.employees must not look like the end of the list.
+func TestClientRejectsResponseWithoutEmployees(t *testing.T) {
+	c := newHRServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{}})
+	}, okToken)
+	if _, err := c.Employees(context.Background()); err == nil {
+		t.Fatal("Employees succeeded on a response with no data.employees")
+	}
+}
+
+// Credentials must not follow a redirect.
+func TestClientDoesNotFollowRedirects(t *testing.T) {
+	var leaked atomic.Bool
+	other := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { leaked.Store(true) }))
+	defer other.Close()
+	c := newHRServer(t, func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, other.URL, http.StatusTemporaryRedirect)
+	}, okToken)
+	if _, err := c.Employees(context.Background()); err == nil {
+		t.Fatal("Employees succeeded through a redirect")
+	}
+	if leaked.Load() {
+		t.Error("the redirect was followed")
 	}
 }

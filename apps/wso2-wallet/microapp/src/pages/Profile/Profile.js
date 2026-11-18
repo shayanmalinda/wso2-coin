@@ -389,7 +389,7 @@ function Profile() {
                     {isPrimary ? DEFAULT_REWARDS_INFO : SET_DEFAULT_INFO}
                   </div>
                 </div>
-                {canShareWallets && (
+                {(canShareWallets || detailWallet.shared) && (
                 <div className="profile-modal-action">
                   <button
                     type="button"
@@ -490,6 +490,7 @@ function Profile() {
       <WalletAccessModal
         open={isAccessModalOpen}
         wallet={detailWallet}
+        canShare={canShareWallets}
         onClose={() => setIsAccessModalOpen(false)}
       />
 

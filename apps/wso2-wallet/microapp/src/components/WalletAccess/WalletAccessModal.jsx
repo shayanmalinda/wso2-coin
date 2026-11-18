@@ -197,7 +197,10 @@ function LevelToggle({ value, onChange, disabled, label }) {
 }
 
 // Owner-only dialog for naming a wallet and choosing who else can use it.
-function WalletAccessModal({ open, wallet, onClose }) {
+// `canShare` is false when sharing is not offered to this owner (for example the
+// organization domain changed); existing grants can then be reviewed and removed,
+// but not added or changed.
+function WalletAccessModal({ open, wallet, onClose, canShare = true }) {
   const queryClient = useQueryClient();
   const address = wallet?.walletAddress || "";
 
@@ -319,6 +322,9 @@ function WalletAccessModal({ open, wallet, onClose }) {
   // A failed read means we do not know who has access, which is not the same as nobody.
   const isShared = !isError && grants.length > 0;
   const locked = !!busy || isFetching;
+  // Changing a level writes a grant, so it needs a successful read of the current
+  // grants (a failed read leaves a stale row that may already be removed).
+  const grantLocked = locked || isError || !canShare;
   const trimmedName = name.trim();
   const nameChanged = trimmedName !== savedName;
 
@@ -354,7 +360,7 @@ function WalletAccessModal({ open, wallet, onClose }) {
                     <LevelToggle
                       value={g.accessLevel}
                       label={`Access level for ${g.email}`}
-                      disabled={locked}
+                      disabled={grantLocked}
                       onChange={(next) =>
                         run(
                           g.email,
@@ -418,7 +424,7 @@ function WalletAccessModal({ open, wallet, onClose }) {
               placeholder={ADD_PERSON_PLACEHOLDER}
               aria-label="Email of the person to add"
               onChange={(e) => setEmail(e.target.value)}
-              disabled={busy === "add"}
+              disabled={busy === "add" || !canShare}
               role="combobox"
               aria-expanded={shownSuggestions.length > 0}
               aria-controls="wallet-access-suggestions"
@@ -473,7 +479,7 @@ function WalletAccessModal({ open, wallet, onClose }) {
               type="button"
               className="wallet-access-btn is-primary is-block"
               onClick={handleAdd}
-              disabled={!email.trim() || locked}
+              disabled={!email.trim() || grantLocked}
             >
               {busy === "add" ? <LoadingOutlined spin /> : <PlusOutlined />}
               <span>{ADD_PERSON}</span>

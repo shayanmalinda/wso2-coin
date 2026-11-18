@@ -75,18 +75,27 @@ type Client struct {
 
 // NewClient returns a Client for cfg.
 func NewClient(cfg ClientConfig) *Client {
-	return &Client{cfg: cfg, http: &http.Client{Timeout: 20 * time.Second}}
+	return &Client{cfg: cfg, http: &http.Client{
+		Timeout: 20 * time.Second,
+		// The requests carry the client secret and the bearer token, and the
+		// configured URLs were checked for HTTPS. A redirect could send them
+		// elsewhere, such as over plain HTTP, so redirects are not followed and
+		// the 3xx response is reported as an unexpected status.
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}}
 }
 
 // Employees returns every active employee, reading the list page by page.
 func (c *Client) Employees(ctx context.Context) ([]Employee, error) {
 	var all []Employee
 	for page := 0; page < maxPages; page++ {
-		batch, err := c.page(ctx, page*pageSize)
+		batch, rows, err := c.page(ctx, page*pageSize)
 		if err != nil {
 			return nil, err
 		}
-		if len(batch) == 0 {
+		// The end is an empty page from HR, not an empty list of usable people:
+		// a full page of rows without a work email must not stop the paging.
+		if rows == 0 {
 			return all, nil
 		}
 		all = append(all, batch...)
@@ -94,10 +103,11 @@ func (c *Client) Employees(ctx context.Context) ([]Employee, error) {
 	return nil, fmt.Errorf("employee list did not end after %d pages", maxPages)
 }
 
-func (c *Client) page(ctx context.Context, offset int) ([]Employee, error) {
+// page reads one page. It returns the usable employees and how many rows HR sent.
+func (c *Client) page(ctx context.Context, offset int) ([]Employee, int, error) {
 	token, err := c.accessToken(ctx)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	body, err := json.Marshal(map[string]any{
 		"query": employeesQuery,
@@ -108,18 +118,18 @@ func (c *Client) page(ctx context.Context, offset int) ([]Employee, error) {
 		},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("encode employees query: %w", err)
+		return nil, 0, fmt.Errorf("encode employees query: %w", err)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.cfg.Endpoint, bytes.NewReader(body))
 	if err != nil {
-		return nil, fmt.Errorf("build employees request: %w", err)
+		return nil, 0, fmt.Errorf("build employees request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
 
 	var out struct {
 		Data struct {
-			Employees []struct {
+			Employees *[]struct {
 				WorkEmail string  `json:"workEmail"`
 				FirstName string  `json:"firstName"`
 				LastName  string  `json:"lastName"`
@@ -131,13 +141,18 @@ func (c *Client) page(ctx context.Context, offset int) ([]Employee, error) {
 		} `json:"errors"`
 	}
 	if err := c.do(req, &out); err != nil {
-		return nil, fmt.Errorf("query employees: %w", err)
+		return nil, 0, fmt.Errorf("query employees: %w", err)
 	}
 	if len(out.Errors) > 0 {
-		return nil, fmt.Errorf("query employees: %s", out.Errors[0].Message)
+		return nil, 0, fmt.Errorf("query employees: %s", out.Errors[0].Message)
 	}
-	employees := make([]Employee, 0, len(out.Data.Employees))
-	for _, e := range out.Data.Employees {
+	if out.Data.Employees == nil {
+		// A page without the field is a broken response, not the end of the list.
+		return nil, 0, errors.New("query employees: response had no data.employees")
+	}
+	rows := *out.Data.Employees
+	employees := make([]Employee, 0, len(rows))
+	for _, e := range rows {
 		if strings.TrimSpace(e.WorkEmail) == "" {
 			continue
 		}
@@ -147,7 +162,7 @@ func (c *Client) page(ctx context.Context, offset int) ([]Employee, error) {
 		}
 		employees = append(employees, emp)
 	}
-	return employees, nil
+	return employees, len(rows), nil
 }
 
 // accessToken returns a cached client-credentials token, fetching a new one when
