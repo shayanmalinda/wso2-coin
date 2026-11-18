@@ -20,6 +20,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/wso2/wso2-coin/apps/wso2-wallet/backend/internal/model"
@@ -63,6 +64,8 @@ func TestGrantAccessRules(t *testing.T) {
 		{"owner level cannot be granted", owner, model.AccessRequest{Email: member, AccessLevel: model.RoleOwner}, ErrInvalidGrant},
 		{"owner cannot grant to self", owner, model.AccessRequest{Email: owner, AccessLevel: model.RoleRead}, ErrInvalidGrant},
 		{"malformed email", owner, model.AccessRequest{Email: "not-an-email", AccessLevel: model.RoleRead}, ErrInvalidGrant},
+		{"look-alike letter in email", owner, model.AccessRequest{Email: "memb\u00e9r@wso2.com", AccessLevel: model.RoleRead}, ErrInvalidGrant},
+		{"email too long", owner, model.AccessRequest{Email: strings.Repeat("a", 250) + "@wso2.com", AccessLevel: model.RoleRead}, ErrInvalidGrant},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -168,6 +171,14 @@ func TestForgedGrantIsIgnored(t *testing.T) {
 		"seal copied to another user": {Address: team, Email: "eve@wso2.com", Level: "READ", Seal: readSeal},
 		"seal copied from a wallet":   {Address: team, Email: member, Level: "TRANSACT", Seal: otherSeal},
 	}
+	// The database matches emails loosely, so a row sealed for one address can be
+	// returned for a caller with a different one. The fake repo matches by case only,
+	// so stand in for that with a row whose stored email differs from its seal.
+	looseSeal, err := enc.Encrypt(string(model.RoleRead), accessAAD(team, "someone-else@wso2.com"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	forgeries["row found for a different email"] = GrantRow{Address: team, Email: "eve@wso2.com", Level: "READ", Seal: looseSeal}
 	for name, forged := range forgeries {
 		t.Run(name, func(t *testing.T) {
 			repo.grants = []GrantRow{forged}

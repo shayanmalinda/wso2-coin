@@ -107,14 +107,22 @@ function WalletAccessModal({ open, wallet, onClose }) {
   const [busy, setBusy] = useState(""); // "name" | "add" | an email being changed
   const [toRemove, setToRemove] = useState(null);
 
+  const savedName = wallet?.name || "";
+
+  // Reset the form only when the dialog opens or moves to another wallet. The wallet
+  // list is refetched after every change, and resetting then would wipe what the
+  // user is typing.
   useEffect(() => {
     if (open) {
-      setName(wallet?.name || "");
       setEmail("");
       setLevel(WALLET_ROLE.READ);
       setToRemove(null);
     }
-  }, [open, wallet]);
+  }, [open, address]);
+
+  useEffect(() => {
+    if (open) setName(savedName);
+  }, [open, address, savedName]);
 
   const refresh = async () => {
     await Promise.all([
@@ -164,7 +172,7 @@ function WalletAccessModal({ open, wallet, onClose }) {
 
   const isShared = grants.length > 0;
   const trimmedName = name.trim();
-  const nameChanged = trimmedName !== (wallet?.name || "");
+  const nameChanged = trimmedName !== savedName;
 
   return (
     <>

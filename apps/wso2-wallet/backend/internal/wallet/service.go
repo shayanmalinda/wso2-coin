@@ -55,8 +55,12 @@ var (
 	ErrDomainNotAllowed  = errors.New("email domain not allowed for wallet sharing")
 )
 
-// maxNameLength is the longest wallet name accepted, in characters.
-const maxNameLength = 50
+const (
+	// maxNameLength is the longest wallet name accepted, in characters.
+	maxNameLength = 50
+	// maxEmailLength is the longest email accepted for a grant; it fits the column.
+	maxEmailLength = 254
+)
 
 // Encryptor authenticates and (de)encrypts stored values, binding them to an AAD.
 type Encryptor interface {
@@ -116,7 +120,7 @@ func (s *Service) ListWallets(ctx context.Context, email string) ([]model.Wallet
 	}
 	for i := range shared {
 		w := &shared[i].Wallet
-		role, ok := s.grantRole(shared[i].Grant)
+		role, ok := s.grantRole(shared[i].Grant, email)
 		if !ok {
 			slog.WarnContext(ctx, "ignoring wallet grant that failed its integrity check", "wallet", w.Address)
 			continue
@@ -418,7 +422,7 @@ func (s *Service) ListAccess(ctx context.Context, email, address string) ([]mode
 	}
 	grants := make([]model.AccessGrant, 0, len(rows))
 	for _, g := range rows {
-		role, ok := s.grantRole(g)
+		role, ok := s.grantRole(g, g.Email)
 		if !ok {
 			slog.WarnContext(ctx, "ignoring wallet grant that failed its integrity check", "wallet", w.Address)
 			continue
@@ -503,7 +507,7 @@ func (s *Service) access(ctx context.Context, email, address string) (*WalletRow
 	if g == nil {
 		return nil, "", ErrForbidden
 	}
-	role, ok := s.grantRole(*g)
+	role, ok := s.grantRole(*g, email)
 	if !ok {
 		slog.WarnContext(ctx, "denying access: wallet grant failed its integrity check", "wallet", w.Address)
 		return nil, "", ErrForbidden
@@ -511,10 +515,15 @@ func (s *Service) access(ctx context.Context, email, address string) (*WalletRow
 	return w, role, nil
 }
 
-// grantRole verifies a grant's seal and returns its role. A row written or edited
-// without the encryption key fails here and grants nothing.
-func (s *Service) grantRole(g GrantRow) (model.Role, bool) {
-	sealed, err := s.enc.Decrypt(g.Seal, accessAAD(g.Address, g.Email))
+// grantRole verifies a grant's seal for the given person and returns its role. A row
+// written or edited without the encryption key fails here and grants nothing.
+//
+// The seal is checked against email, the person the grant is being used by, rather
+// than the email stored on the row: the database matches emails loosely (case and,
+// on some collations, accents), so a row found for the caller may have been sealed
+// for a different address.
+func (s *Service) grantRole(g GrantRow, email string) (model.Role, bool) {
+	sealed, err := s.enc.Decrypt(g.Seal, accessAAD(g.Address, email))
 	if err != nil || sealed != g.Level {
 		return "", false
 	}
@@ -644,8 +653,17 @@ func normEmail(email string) string {
 
 // validEmail is a shape check only; the sharing-domain check does the real gating.
 func validEmail(email string) bool {
+	if len(email) > maxEmailLength {
+		return false
+	}
+	for _, r := range email {
+		// Printable ASCII only: no spaces, control characters or look-alike letters.
+		if r <= ' ' || r > '~' {
+			return false
+		}
+	}
 	local, domain, ok := strings.Cut(email, "@")
-	return ok && local != "" && domain != "" && !strings.ContainsAny(email, " \t\r\n") && !strings.Contains(domain, "@")
+	return ok && local != "" && domain != "" && !strings.Contains(domain, "@")
 }
 
 func validName(name string) bool {
