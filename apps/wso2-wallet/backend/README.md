@@ -40,8 +40,7 @@ go run ./cmd/server
 | `INITIAL_COINS_ENABLED` | no | `true` | Grant coins on a user's first wallet |
 | `INITIAL_COINS_AMOUNT` | no | `10` | Amount to grant |
 | `INITIAL_COINS_FUNDING_WALLET` | yes (if enabled) | — | Wallet the grant is debited from |
-| `INITIAL_COINS_EMAIL_DOMAIN` | no | `wso2.com` | Domain eligible for the grant |
-| `SHARING_EMAIL_DOMAIN` | no | `wso2.com` | Domain both the owner and the other person must belong to for wallet sharing |
+| `COMPANY_EMAIL_DOMAIN` | no | `wso2.com` | The organization's email domain. Only its members get the initial coin grant, and wallet sharing requires both the owner and the other person to belong to it. Replaces `INITIAL_COINS_EMAIL_DOMAIN`, which is no longer read |
 | `MAINTENANCE_MODE` | no | `false` | Show the client maintenance screen |
 | `MAINTENANCE_MESSAGE` | no | — | Message shown when maintenance mode is on |
 
@@ -87,7 +86,7 @@ cover `granted_by` or `created_on`, and it cannot detect replay: someone who can
 to the database could restore a previously valid grant after it was revoked. The
 wallet owner (`user_wallet.user_email`) is not protected this way.
 
-`SHARING_EMAIL_DOMAIN` is checked when a grant is created or changed. Changing it
+`COMPANY_EMAIL_DOMAIN` is checked when a grant is created or changed. Changing it
 later does not remove existing grants; the owner has to revoke them.
 
 Existing databases need `resources/migration_add_shared_wallets.sql`. It only adds

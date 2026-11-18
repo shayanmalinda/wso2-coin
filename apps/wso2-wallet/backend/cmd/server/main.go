@@ -94,7 +94,7 @@ func run() error {
 		Amount:        cfg.InitialCoins.Amount,
 		FundingWallet: cfg.InitialCoins.FundingWallet,
 		EmailDomain:   cfg.InitialCoins.EmailDomain,
-	}, wallet.Sharing{EmailDomain: cfg.Sharing.EmailDomain})
+	}, wallet.Sharing{EmailDomain: cfg.CompanyEmailDomain})
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {

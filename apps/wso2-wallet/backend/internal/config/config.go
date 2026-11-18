@@ -28,9 +28,16 @@ import (
 
 const encryptionKeySize = 32
 
-// defaultSharingEmailDomain is the organization wallet sharing is limited to unless
-// SHARING_EMAIL_DOMAIN overrides it.
-const defaultSharingEmailDomain = "wso2.com"
+// defaultCompanyEmailDomain is the organization's email domain unless
+// COMPANY_EMAIL_DOMAIN overrides it. Everything limited to people in the
+// organization reads it: the initial coin grant and wallet sharing.
+//
+// Rebrand note: when the organization moves to choreolabs.com, set
+// COMPANY_EMAIL_DOMAIN in the deployment, then update this default. Only one domain
+// is accepted at a time, and wallets and grants are tied to the email they were
+// created with, so people whose address changes need their wallets and grants moved
+// to the new address as well.
+const defaultCompanyEmailDomain = "wso2.com"
 
 // Config is the fully resolved, validated service configuration.
 type Config struct {
@@ -39,8 +46,9 @@ type Config struct {
 	DB                DBConfig
 	EncryptionKey     []byte
 	InitialCoins      InitialCoinsConfig
-	Sharing           SharingConfig
-	Maintenance       MaintenanceConfig
+	// CompanyEmailDomain is the organization's email domain.
+	CompanyEmailDomain string
+	Maintenance        MaintenanceConfig
 }
 
 // JWTConfig controls how the caller's token is verified. When JWKSURL is set the
@@ -76,12 +84,6 @@ type InitialCoinsConfig struct {
 	EmailDomain   string
 }
 
-// SharingConfig controls who may take part in wallet sharing.
-type SharingConfig struct {
-	// EmailDomain is the domain both the owner and the grantee must belong to.
-	EmailDomain string
-}
-
 // MaintenanceConfig controls the client-facing maintenance screen.
 type MaintenanceConfig struct {
 	Mode    bool
@@ -111,7 +113,8 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	initialCoins, err := loadInitialCoins()
+	companyDomain := envOrDefault("COMPANY_EMAIL_DOMAIN", defaultCompanyEmailDomain)
+	initialCoins, err := loadInitialCoins(companyDomain)
 	if err != nil {
 		return Config{}, err
 	}
@@ -135,9 +138,9 @@ func Load() (Config, error) {
 			ConnMaxLifetimeSecond: envIntOrDefault("DB_CONN_MAX_LIFETIME_SECONDS", 300),
 			ConnectTimeoutSecond:  envIntOrDefault("DB_CONNECT_TIMEOUT_SECONDS", 10),
 		},
-		EncryptionKey: key,
-		InitialCoins:  initialCoins,
-		Sharing:       SharingConfig{EmailDomain: envOrDefault("SHARING_EMAIL_DOMAIN", defaultSharingEmailDomain)},
+		EncryptionKey:      key,
+		InitialCoins:       initialCoins,
+		CompanyEmailDomain: companyDomain,
 		Maintenance: MaintenanceConfig{
 			Mode:    envBool("MAINTENANCE_MODE", false),
 			Message: os.Getenv("MAINTENANCE_MESSAGE"),
@@ -160,12 +163,14 @@ func loadEncryptionKey() ([]byte, error) {
 	return key, nil
 }
 
-func loadInitialCoins() (InitialCoinsConfig, error) {
+// loadInitialCoins reads the initial coin grant settings. The grant goes to people
+// in the company domain.
+func loadInitialCoins(companyDomain string) (InitialCoinsConfig, error) {
 	enabled := envBool("INITIAL_COINS_ENABLED", true)
 	cfg := InitialCoinsConfig{
 		Enabled:     enabled,
 		Amount:      envOrDefault("INITIAL_COINS_AMOUNT", "10"),
-		EmailDomain: envOrDefault("INITIAL_COINS_EMAIL_DOMAIN", "wso2.com"),
+		EmailDomain: companyDomain,
 	}
 	if !enabled {
 		return cfg, nil
