@@ -21,15 +21,29 @@ import { useEffect, useState } from "react";
 import { Modal } from "antd";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  CheckCircleFilled,
   DeleteOutlined,
+  EyeOutlined,
   LoadingOutlined,
   PlusOutlined,
+  SendOutlined,
+  UserOutlined,
 } from "@ant-design/icons";
 
 import ConfirmModal from "../ConfirmModal/ConfirmModal";
 import {
   ACCESS_LEVEL_READ,
+  ACCESS_LEVEL_READ_INFO,
   ACCESS_LEVEL_TRANSACT,
+  ACCESS_LEVEL_TRANSACT_INFO,
+  ADD_A_PERSON,
+  PEOPLE_SUGGESTIONS,
+  NO_PEOPLE_FOUND,
+  SEARCH_PEOPLE_HINT,
+  ACCESS_LEVEL_QUESTION,
+  OWNER_TAG,
+  YOU,
+  WALLET_NAME_INFO,
   ACCESS_REMOVED,
   ACCESS_UPDATED,
   ADD_PERSON,
@@ -61,9 +75,13 @@ import {
   grantWalletAccess,
   renameWallet,
   revokeWalletAccess,
+  searchEmployees,
 } from "../../services/wallet.service";
 
 const MAX_NAME_LENGTH = 50;
+// The backend ignores shorter searches; match it so no request is wasted.
+const MIN_SEARCH_LENGTH = 3;
+const SEARCH_DELAY_MS = 300;
 
 // The service throws "<status> - <message>". A 400 carries a message written for
 // the user (e.g. the person is outside the organization), so show that one.
@@ -72,18 +90,109 @@ const errorText = (error, fallback) => {
   return match ? match[1] : fallback;
 };
 
-function LevelSelect({ value, onChange, disabled, label }) {
+const LEVELS = [
+  {
+    value: WALLET_ROLE.READ,
+    label: ACCESS_LEVEL_READ,
+    info: ACCESS_LEVEL_READ_INFO,
+    Icon: EyeOutlined,
+  },
+  {
+    value: WALLET_ROLE.TRANSACT,
+    label: ACCESS_LEVEL_TRANSACT,
+    info: ACCESS_LEVEL_TRANSACT_INFO,
+    Icon: SendOutlined,
+  },
+];
+
+// Arrow keys move between the options of a radio group, as they do for native radios.
+const onRadioKeyDown = (e, value, onChange) => {
+  const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
+  if (!step) return;
+  e.preventDefault();
+  const i = LEVELS.findIndex((l) => l.value === value);
+  onChange(LEVELS[(i + step + LEVELS.length) % LEVELS.length].value);
+};
+
+// A person's photo, falling back to their initial when there is none or it fails to
+// load. The photo host refuses requests that carry this page as the referrer, so the
+// policy is set before `src`: Safari starts the request as soon as `src` is set.
+function PersonAvatar({ person }) {
+  const [failed, setFailed] = useState(false);
+  if (!person.thumbnail || failed) {
+    return (
+      <span className="wallet-access-avatar">
+        {(person.name || person.email).charAt(0).toUpperCase()}
+      </span>
+    );
+  }
   return (
-    <select
-      className="wallet-access-select"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      disabled={disabled}
-      aria-label={label}
-    >
-      <option value={WALLET_ROLE.READ}>{ACCESS_LEVEL_READ}</option>
-      <option value={WALLET_ROLE.TRANSACT}>{ACCESS_LEVEL_TRANSACT}</option>
-    </select>
+    <img
+      referrerPolicy="no-referrer"
+      className="wallet-access-avatar"
+      src={person.thumbnail}
+      alt=""
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+// The two access levels as cards, each saying what the person will be able to do.
+function LevelCards({ value, onChange, disabled, label }) {
+  return (
+    <div className="wallet-access-cards" role="radiogroup" aria-label={label}>
+      {LEVELS.map(({ value: v, label: text, info, Icon }) => {
+        const selected = v === value;
+        return (
+          <button
+            key={v}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            tabIndex={selected ? 0 : -1}
+            className={`wallet-access-card ${selected ? "is-selected" : ""}`}
+            onClick={() => onChange(v)}
+            onKeyDown={(e) => onRadioKeyDown(e, value, onChange)}
+            disabled={disabled}
+          >
+            <span className="wallet-access-card-icon">
+              <Icon />
+            </span>
+            <span className="wallet-access-card-text">
+              <span className="wallet-access-card-title">{text}</span>
+              <span className="wallet-access-card-info">{info}</span>
+            </span>
+            {selected && <CheckCircleFilled className="wallet-access-card-check" />}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// Compact two-way switch for changing the level of someone who already has access.
+function LevelToggle({ value, onChange, disabled, label }) {
+  return (
+    <div className="wallet-access-toggle" role="radiogroup" aria-label={label}>
+      {LEVELS.map(({ value: v, label: text }) => {
+        const selected = v === value;
+        return (
+          <button
+            key={v}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            tabIndex={selected ? 0 : -1}
+            className={`wallet-access-toggle-option ${selected ? "is-selected" : ""}`}
+            onClick={() => !selected && onChange(v)}
+            onKeyDown={(e) => onRadioKeyDown(e, value, onChange)}
+            disabled={disabled}
+          >
+            {text}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -113,12 +222,38 @@ function WalletAccessModal({ open, wallet, onClose }) {
 
   const savedName = wallet?.name || "";
 
+  // Search the directory a moment after the owner stops typing. Picking a person
+  // fills in their email; `pickedEmail` then keeps the list closed until they type
+  // something else.
+  const [term, setTerm] = useState("");
+  const [pickedEmail, setPickedEmail] = useState("");
+  useEffect(() => {
+    const timer = setTimeout(() => setTerm(email.trim()), SEARCH_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [email]);
+  const canSearch =
+    open && term.length >= MIN_SEARCH_LENGTH && term === email.trim() && term !== pickedEmail;
+  const { data: suggestions = [], isFetched: searched } = useQuery({
+    queryKey: ["employees", term.toLowerCase()],
+    queryFn: () => searchEmployees(term),
+    enabled: canSearch,
+    staleTime: 60_000,
+  });
+  const alreadyAdded = new Set(grants.map((g) => g.email.toLowerCase()));
+  const shownSuggestions = canSearch
+    ? suggestions.filter((p) => !alreadyAdded.has(p.email.toLowerCase()))
+    : [];
+  // Typed text that looks like an email is being entered by hand, not searched.
+  const searchedWithNoMatch =
+    canSearch && searched && shownSuggestions.length === 0 && !email.includes("@");
+
   // Reset the form only when the dialog opens or moves to another wallet. The wallet
   // list is refetched after every change, and resetting then would wipe what the
   // user is typing.
   useEffect(() => {
     if (open) {
       setEmail("");
+      setPickedEmail("");
       setLevel(WALLET_ROLE.READ);
       setToRemove(null);
     }
@@ -141,7 +276,7 @@ function WalletAccessModal({ open, wallet, onClose }) {
       // The write is done. Reload in the background so a slow refresh cannot keep
       // the dialog stuck; the controls stay locked while it loads (see isFetching).
       refresh();
-      showToast(SUCCESS, successText);
+      if (successText) showToast(SUCCESS, successText);
       return true;
     } catch (error) {
       console.error(failureText, error);
@@ -197,78 +332,41 @@ function WalletAccessModal({ open, wallet, onClose }) {
         centered
       >
         <div className="wallet-access">
-          <label className="wallet-access-label" htmlFor="wallet-access-name">
-            {WALLET_NAME}
-          </label>
-          <div className="wallet-access-row">
-            <input
-              id="wallet-access-name"
-              className="wallet-access-input"
-              value={name}
-              maxLength={MAX_NAME_LENGTH}
-              placeholder={WALLET_NAME_PLACEHOLDER}
-              onChange={(e) => setName(e.target.value)}
-              disabled={!isShared || busy === "name"}
-            />
-            <button
-              type="button"
-              className="wallet-access-btn"
-              onClick={() =>
-                run(
-                  "name",
-                  () => renameWallet(address, trimmedName),
-                  WALLET_NAME_SAVED,
-                  ERROR_SAVING_WALLET_NAME,
-                )
-              }
-              disabled={!isShared || !nameChanged || locked}
-            >
-              {busy === "name" ? <LoadingOutlined spin /> : SAVE}
-            </button>
-          </div>
-          {!isShared && !isLoading && !isError && (
-            <div className="wallet-access-hint">{WALLET_NAME_NEEDS_SHARING}</div>
-          )}
-
-          <div className="wallet-access-label wallet-access-section">
-            {PEOPLE_WITH_ACCESS}
-          </div>
-          {isLoading ? (
-            <div className="wallet-access-hint">
-              <LoadingOutlined spin />
-            </div>
-          ) : isError ? (
-            <div className="wallet-access-hint is-error">
-              {ERROR_LOADING_ACCESS}{" "}
-              <button
-                type="button"
-                className="wallet-access-btn"
-                onClick={() => refetch()}
-                disabled={isFetching}
-              >
-                {RETRY}
-              </button>
-            </div>
-          ) : !isShared ? (
-            <div className="wallet-access-hint">{NO_ONE_HAS_ACCESS}</div>
-          ) : (
+          <section className="wallet-access-block">
+            <h3 className="wallet-access-heading">{PEOPLE_WITH_ACCESS}</h3>
             <ul className="wallet-access-list">
+              <li className="wallet-access-person">
+                <span className="wallet-access-avatar is-owner">
+                  <UserOutlined />
+                </span>
+                <span className="wallet-access-who">
+                  <span className="wallet-access-email">{YOU}</span>
+                </span>
+                <span className="wallet-access-owner-tag">{OWNER_TAG}</span>
+              </li>
               {grants.map((g) => (
-                <li key={g.email} className="wallet-access-person">
-                  <span className="wallet-access-email">{g.email}</span>
-                  <LevelSelect
-                    value={g.accessLevel}
-                    label={`Access level for ${g.email}`}
-                    disabled={locked}
-                    onChange={(next) =>
-                      run(
-                        g.email,
-                        () => grantWalletAccess(address, g.email, next),
-                        ACCESS_UPDATED,
-                        ERROR_UPDATING_ACCESS,
-                      )
-                    }
-                  />
+                <li key={g.email} className="wallet-access-person is-member">
+                  <span className="wallet-access-avatar">
+                    {g.email.charAt(0).toUpperCase()}
+                  </span>
+                  <span className="wallet-access-who">
+                    <span className="wallet-access-email">{g.email}</span>
+                    <LevelToggle
+                      value={g.accessLevel}
+                      label={`Access level for ${g.email}`}
+                      disabled={locked}
+                      onChange={(next) =>
+                        run(
+                          g.email,
+                          () => grantWalletAccess(address, g.email, next),
+                          // The switch itself shows the new level; a toast per
+                          // tap only piles up.
+                          null,
+                          ERROR_UPDATING_ACCESS,
+                        )
+                      }
+                    />
+                  </span>
                   <button
                     type="button"
                     className="wallet-access-remove"
@@ -285,9 +383,31 @@ function WalletAccessModal({ open, wallet, onClose }) {
                 </li>
               ))}
             </ul>
-          )}
+            {isLoading ? (
+              <div className="wallet-access-hint">
+                <LoadingOutlined spin />
+              </div>
+            ) : isError ? (
+              <div className="wallet-access-hint is-error">
+                <span>{ERROR_LOADING_ACCESS}</span>
+                <button
+                  type="button"
+                  className="wallet-access-link"
+                  onClick={() => refetch()}
+                  disabled={isFetching}
+                >
+                  {RETRY}
+                </button>
+              </div>
+            ) : (
+              !isShared && (
+                <div className="wallet-access-hint">{NO_ONE_HAS_ACCESS}</div>
+              )
+            )}
+          </section>
 
-          <div className="wallet-access-add">
+          <section className="wallet-access-block">
+            <h3 className="wallet-access-heading">{ADD_A_PERSON}</h3>
             <input
               className="wallet-access-input"
               type="email"
@@ -299,29 +419,103 @@ function WalletAccessModal({ open, wallet, onClose }) {
               aria-label="Email of the person to add"
               onChange={(e) => setEmail(e.target.value)}
               disabled={busy === "add"}
+              role="combobox"
+              aria-expanded={shownSuggestions.length > 0}
+              aria-controls="wallet-access-suggestions"
+              aria-autocomplete="list"
             />
+            {shownSuggestions.length > 0 && (
+              <ul
+                id="wallet-access-suggestions"
+                className="wallet-access-suggestions"
+                role="listbox"
+                aria-label={PEOPLE_SUGGESTIONS}
+              >
+                {shownSuggestions.map((person) => (
+                  <li key={person.email} role="presentation">
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={false}
+                      className="wallet-access-suggestion"
+                      onClick={() => {
+                        setEmail(person.email);
+                        setPickedEmail(person.email);
+                      }}
+                    >
+                      <PersonAvatar person={person} />
+                      <span className="wallet-access-who is-compact">
+                        <span className="wallet-access-email">
+                          {person.name || person.email}
+                        </span>
+                        <span className="wallet-access-suggestion-email">
+                          {person.email}
+                        </span>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {shownSuggestions.length === 0 && (
+              <div className="wallet-access-hint">
+                {searchedWithNoMatch ? NO_PEOPLE_FOUND : SEARCH_PEOPLE_HINT}
+              </div>
+            )}
+            <div className="wallet-access-sublabel">{ACCESS_LEVEL_QUESTION}</div>
+            <LevelCards
+              value={level}
+              onChange={setLevel}
+              disabled={busy === "add"}
+              label={ACCESS_LEVEL_QUESTION}
+            />
+            <button
+              type="button"
+              className="wallet-access-btn is-primary is-block"
+              onClick={handleAdd}
+              disabled={!email.trim() || locked}
+            >
+              {busy === "add" ? <LoadingOutlined spin /> : <PlusOutlined />}
+              <span>{ADD_PERSON}</span>
+            </button>
+          </section>
+
+          <section className="wallet-access-block">
+            <label className="wallet-access-heading" htmlFor="wallet-access-name">
+              {WALLET_NAME}
+            </label>
             <div className="wallet-access-row">
-              <LevelSelect
-                value={level}
-                onChange={setLevel}
-                disabled={busy === "add"}
-                label="Access level for the new person"
+              <input
+                id="wallet-access-name"
+                className="wallet-access-input"
+                value={name}
+                maxLength={MAX_NAME_LENGTH}
+                placeholder={WALLET_NAME_PLACEHOLDER}
+                onChange={(e) => setName(e.target.value)}
+                disabled={!isShared || busy === "name"}
               />
               <button
                 type="button"
-                className="wallet-access-btn is-primary"
-                onClick={handleAdd}
-                disabled={!email.trim() || locked}
+                className="wallet-access-btn"
+                onClick={() =>
+                  run(
+                    "name",
+                    () => renameWallet(address, trimmedName),
+                    WALLET_NAME_SAVED,
+                    ERROR_SAVING_WALLET_NAME,
+                  )
+                }
+                disabled={!isShared || !nameChanged || locked}
               >
-                {busy === "add" ? (
-                  <LoadingOutlined spin />
-                ) : (
-                  <PlusOutlined />
-                )}
-                <span>{ADD_PERSON}</span>
+                {busy === "name" ? <LoadingOutlined spin /> : SAVE}
               </button>
             </div>
-          </div>
+            <div className="wallet-access-hint">
+              {isShared || isLoading || isError
+                ? WALLET_NAME_INFO
+                : WALLET_NAME_NEEDS_SHARING}
+            </div>
+          </section>
         </div>
       </Modal>
 

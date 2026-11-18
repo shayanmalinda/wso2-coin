@@ -203,6 +203,27 @@ paths:
           description: Access removed
         "404":
           $ref: "#/components/responses/Error"
+  /api/v1/employees:
+    get:
+      summary: Search people in the organization to share a wallet with
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Part of a name or email. Fewer than 3 characters returns no results.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Up to 10 matching people, best matches first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Employee"
+        "503":
+          $ref: "#/components/responses/Error"
   /api/v1/transfers:
     post:
       summary: Transfer coins from a wallet the caller owns or has TRANSACT access to
@@ -262,6 +283,9 @@ components:
           type: boolean
         maintenanceMessage:
           type: string
+        walletSharingEnabled:
+          type: boolean
+          description: Whether the caller may share wallets (they belong to the organization).
     Wallet:
       type: object
       properties:
@@ -318,6 +342,16 @@ components:
         accessLevel:
           type: string
           enum: [TRANSACT, READ]
+    Employee:
+      type: object
+      required: [name, email]
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+        thumbnail:
+          type: string
     RevokeRequest:
       type: object
       required: [email]

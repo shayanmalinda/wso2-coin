@@ -112,6 +112,17 @@ export const revokeWalletAccess = (walletAddress, email) =>
     body: { email },
   });
 
+// People in the organization matching a name or email, for the share dialog. Returns
+// [] when the search is unavailable, so the owner can still type an email.
+export const searchEmployees = async (query) => {
+  try {
+    const params = new URLSearchParams({ q: query });
+    return (await request(`/employees?${params.toString()}`)) || [];
+  } catch (_) {
+    return [];
+  }
+};
+
 export const leaveWallet = (walletAddress) =>
   request(`/wallets/${walletAddress}/access/leave`, { method: "POST" });
 
@@ -188,9 +199,11 @@ export const fetchAppConfigs = async () => {
     return {
       isMaintenanceMode: !!config.maintenanceMode,
       maintenanceMessage: config.maintenanceMessage || "",
+      // Whether this user may share wallets (they belong to the organization).
+      canShareWallets: !!config.walletSharingEnabled,
     };
   } catch (_) {
     // Fail safe: never block the app if the config endpoint is unreachable.
-    return { isMaintenanceMode: false, maintenanceMessage: "" };
+    return { isMaintenanceMode: false, maintenanceMessage: "", canShareWallets: false };
   }
 };

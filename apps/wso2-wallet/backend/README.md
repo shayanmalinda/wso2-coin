@@ -41,6 +41,10 @@ go run ./cmd/server
 | `INITIAL_COINS_AMOUNT` | no | `10` | Amount to grant |
 | `INITIAL_COINS_FUNDING_WALLET` | yes (if enabled) | — | Wallet the grant is debited from |
 | `COMPANY_EMAIL_DOMAIN` | no | `wso2.com` | The organization's email domain. Only its members get the initial coin grant, and wallet sharing requires both the owner and the other person to belong to it. Replaces `INITIAL_COINS_EMAIL_DOMAIN`, which is no longer read |
+| `PEOPLE_API_URL` | no | — | HR entity GraphQL endpoint for the employee search. Empty turns the search off |
+| `PEOPLE_TOKEN_URL` / `PEOPLE_CLIENT_ID` / `PEOPLE_CLIENT_SECRET` | yes (if `PEOPLE_API_URL` is set) | — | OAuth2 client credentials for the HR entity |
+| `PEOPLE_SCOPES` | no | — | Scopes to request for the HR entity token |
+| `PEOPLE_EMPLOYEE_FILTER` | no | `{"employeeStatus": ["Active"]}` | GraphQL `EmployeeFilter` (JSON) that selects active employees |
 | `MAINTENANCE_MODE` | no | `false` | Show the client maintenance screen |
 | `MAINTENANCE_MESSAGE` | no | — | Message shown when maintenance mode is on |
 
@@ -61,6 +65,7 @@ go run ./cmd/server
 | `POST` | `/api/v1/wallets/{address}/access` | Grant or change access (owner) |
 | `POST` | `/api/v1/wallets/{address}/access/revoke` | Remove a person's access (owner) |
 | `POST` | `/api/v1/wallets/{address}/access/leave` | Give up your own access to a shared wallet |
+| `GET` | `/api/v1/employees?q=` | Search people in the organization to share a wallet with |
 | `POST` | `/api/v1/transfers` | Transfer between wallets |
 
 See `openapi.yaml` for the full contract.
@@ -77,6 +82,13 @@ team can run one wallet together.
 A wallet can be named only while it is shared with at least one other person, and the
 name is shown only while that holds. Each transfer records who made it; the sending
 wallet's history shows it.
+
+When the HR entity is configured (`PEOPLE_API_URL`), the owner can pick a person by
+name: `GET /api/v1/employees?q=` searches active employees in the company domain. A
+search needs at least 3 characters and returns at most 10 people, and only callers
+in the company domain may use it. The employee list
+is cached for 24 hours, and an older copy is served if the HR entity is down. Without
+the HR entity the search returns 503 and people are added by email, as before.
 
 Access rows, the wallet name and the transfer initiator are sealed with
 `ENCRYPTION_KEY` and bound to their wallet, user or transaction. The seal covers the
@@ -101,6 +113,7 @@ internal/crypto    AES-256-GCM field encryption
 internal/money     fixed-point amount math
 internal/middleware auth, CORS, correlation, logging, security headers
 internal/model     API request/response types
+internal/people    employee search backed by the HR entity
 internal/wallet    handler -> service -> repository
 resources/         schema
 ```

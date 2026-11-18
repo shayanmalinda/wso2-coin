@@ -15,7 +15,7 @@
 // under the License.
 
 // nav bar
-export const WSO2_WALLET = "WSO2 Wallet";
+export const WALLET_APP_NAME = "Choreo Labs Wallet";
 export const CONNECTED = "Connected";
 export const CONNECTING = "Connecting";
 export const NOT_CONNECTED = "Not Connected";
@@ -117,17 +117,31 @@ export const ERROR_LEAVING_WALLET = "Couldn't leave the wallet";
 export const READ_ONLY_SEND_INFO =
   "You have view-only access to this wallet, so you can't send from it.";
 export const ACCESS_LEVEL_READ = "View only";
+export const ACCESS_LEVEL_READ_INFO = "Can see the balance and transaction history.";
 export const ACCESS_LEVEL_TRANSACT = "View and send";
+export const ACCESS_LEVEL_TRANSACT_INFO =
+  "Can see the balance and history, and send coins from this wallet.";
+export const ACCESS_LEVEL_QUESTION = "What can they do?";
+export const ADD_A_PERSON = "Add a person";
+export const OWNER_TAG = "Owner";
+export const YOU = "You";
+export const WALLET_NAME_INFO =
+  "Shown to everyone with access, and to people sending coins to this wallet.";
 export const WALLET_NAME = "Wallet name";
 export const WALLET_NAME_PLACEHOLDER = "e.g. HR Team";
 export const WALLET_NAME_NEEDS_SHARING =
-  "Add at least one person before naming this wallet.";
+  "Only shared wallets can be given a name. Add at least one person first.";
 export const WALLET_NAME_SAVED = "Wallet name saved";
 export const ERROR_SAVING_WALLET_NAME = "Couldn't save the wallet name";
 export const PEOPLE_WITH_ACCESS = "People with access";
-export const NO_ONE_HAS_ACCESS = "Only you can use this wallet.";
-export const ADD_PERSON = "Add";
-export const ADD_PERSON_PLACEHOLDER = "name@wso2.com";
+export const NO_ONE_HAS_ACCESS = "No one else has access yet.";
+export const ADD_PERSON = "Give access";
+export const ADD_PERSON_PLACEHOLDER = "Search by name or email";
+export const PEOPLE_SUGGESTIONS = "Matching people";
+export const SEARCH_PEOPLE_HINT =
+  "Type at least 3 letters of a name to search, or enter a full email.";
+export const NO_PEOPLE_FOUND =
+  "No one found with that name. You can enter their full email instead.";
 export const ACCESS_UPDATED = "Access updated";
 export const ACCESS_REMOVED = "Access removed";
 export const ERROR_LOADING_ACCESS = "Couldn't load who has access";
@@ -139,3 +153,12 @@ export const REMOVE_ACCESS = "Remove access";
 export const CONFIRM_REMOVE_ACCESS = "will no longer be able to use this wallet.";
 export const REMOVE = "Remove";
 export const SAVE = "Save";
+
+// Which wallet is being viewed, shown on the home screen
+export const PERSONAL_WALLET = "Personal wallet";
+export const SHARED_WALLET = "Shared wallet";
+export const WALLET_ENDING_IN = "Wallet address ending in";
+export const ACCESS_ONLY_YOU = "Only you";
+export const ACCESS_SHARED_OWNER = "Shared · Owner";
+export const ACCESS_SHARED_TRANSACT = "Shared · Can send";
+export const ACCESS_SHARED_READ = "Shared · View only";

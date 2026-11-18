@@ -21,7 +21,7 @@ import "./CreateWallet.css";
 import Wso2MainImg from "../../assets/images/pulse-orange.png";
 import { useNavigate } from "react-router-dom";
 import {
-  WSO2_WALLET,
+  WALLET_APP_NAME,
   CREATE_A_NEW_WALLET,
   SUCCESS,
   SUCCESS_WALLET_CREATED,
@@ -59,7 +59,7 @@ function CreateWallet() {
         <div className="cw-logo">
           <Avatar size={96} src={Wso2MainImg} />
         </div>
-        <div className="cw-title">{WSO2_WALLET}</div>
+        <div className="cw-title">{WALLET_APP_NAME}</div>
         <div className="cw-subtitle">
           Send, receive, and track your O2C.
         </div>

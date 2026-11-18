@@ -96,7 +96,11 @@ import {
   createWallet,
   leaveWallet,
 } from '../../services/wallet.service';
-import { useUserWallets, useWalletBalance } from '../../services/query-hooks';
+import {
+  useCanShareWallets,
+  useUserWallets,
+  useWalletBalance,
+} from '../../services/query-hooks';
 import { formatBalance } from '../../utils/transactionUtils';
 
 const formatWalletAddress = (addr) => {
@@ -145,6 +149,8 @@ function Profile() {
   const navigate = useNavigate();
 
   const [walletAddress, setWalletAddress] = useState('');
+  // Sharing is for people in the organization; others are not offered it.
+  const canShareWallets = useCanShareWallets();
 
   const {
     data: userWallets = [],
@@ -383,6 +389,7 @@ function Profile() {
                     {isPrimary ? DEFAULT_REWARDS_INFO : SET_DEFAULT_INFO}
                   </div>
                 </div>
+                {canShareWallets && (
                 <div className="profile-modal-action">
                   <button
                     type="button"
@@ -396,6 +403,7 @@ function Profile() {
                     {MANAGE_ACCESS_INFO}
                   </div>
                 </div>
+                )}
                   </>
                 ) : (
                   <div className="profile-modal-action">

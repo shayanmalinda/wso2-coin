@@ -25,7 +25,13 @@ import {
 import { message } from 'antd';
 import { useNavigate } from 'react-router-dom';
 
-import { SendOutlined, DownloadOutlined, LoadingOutlined } from '@ant-design/icons';
+import {
+  SendOutlined,
+  DownloadOutlined,
+  LoadingOutlined,
+  TeamOutlined,
+  UserOutlined,
+} from '@ant-design/icons';
 
 import RecentActivities from '../../components/Home/RecentActivities';
 import {
@@ -38,10 +44,17 @@ import {
   ERROR_BRIDGE_NOT_READY,
   SEND,
   READ_ONLY_SEND_INFO,
+  PERSONAL_WALLET,
+  SHARED_WALLET,
+  WALLET_ENDING_IN,
+  ACCESS_ONLY_YOU,
+  ACCESS_SHARED_OWNER,
+  ACCESS_SHARED_TRANSACT,
+  ACCESS_SHARED_READ,
   REQUEST,
   TOTAL_BALANCE,
   WSO2_TOKEN,
-  WSO2_WALLET,
+  WALLET_APP_NAME,
   CONNECTED,
   CONNECTING,
   OK,
@@ -49,7 +62,7 @@ import {
 import { showAlertBox } from '../../helpers/alerts';
 import { getLocalDataAsync, saveLocalDataAsync } from '../../helpers/storage';
 import { waitForBridge } from '../../helpers/bridge';
-import { useWalletBalance } from '../../services/query-hooks';
+import { useWalletBalance, useCanShareWallets } from '../../services/query-hooks';
 import { getUserWalletAddresses, WALLET_ROLE } from '../../services/wallet.service';
 import { formatBalance } from '../../utils/transactionUtils';
 
@@ -136,6 +149,22 @@ function Home() {
   };
 
   const isReadOnly = activeWallet?.role === WALLET_ROLE.READ;
+  // People outside the organization cannot share, so "Only you" would tell them
+  // nothing; they only see an access pill on a wallet that is actually shared.
+  const canShareWallets = useCanShareWallets();
+  // Which wallet this is: a named or unnamed shared wallet, or the user's own.
+  const isSharedWallet =
+    !!activeWallet && (activeWallet.shared || activeWallet.role !== WALLET_ROLE.OWNER);
+  const identity = !isSharedWallet
+    ? { title: PERSONAL_WALLET, access: ACCESS_ONLY_YOU }
+    : {
+        title: activeWallet.name || SHARED_WALLET,
+        access: {
+          [WALLET_ROLE.OWNER]: ACCESS_SHARED_OWNER,
+          [WALLET_ROLE.TRANSACT]: ACCESS_SHARED_TRANSACT,
+          [WALLET_ROLE.READ]: ACCESS_SHARED_READ,
+        }[activeWallet.role],
+      };
 
   if (isResolvingWallet) {
     return (
@@ -154,15 +183,34 @@ function Home() {
       {contextHolder}
 
       <div className="wallet-hero">
-        <div className="wallet-hero-label">Connected Wallet</div>
-        <div className="wallet-hero-name">{activeWallet?.name || WSO2_WALLET}</div>
-        <div className="wallet-hero-badge-row">
-          <span className={`hero-badge ${hasValidAddress ? 'is-connected' : 'is-connecting'}`}>
-            <span className="hero-badge-dot" />
-            <span className="hero-badge-text">
-              {hasValidAddress ? CONNECTED : CONNECTING}
-            </span>
+        <div className="wallet-hero-top">
+          <span className="wallet-hero-label">
+            <span
+              className={`wallet-hero-status ${hasValidAddress ? 'is-connected' : 'is-connecting'}`}
+              role="img"
+              aria-label={hasValidAddress ? CONNECTED : CONNECTING}
+              title={hasValidAddress ? CONNECTED : CONNECTING}
+            />
+            {WALLET_APP_NAME}
           </span>
+          {activeWallet && (isSharedWallet || canShareWallets) && (
+            <span className="wallet-hero-access">
+              {isSharedWallet ? <TeamOutlined /> : <UserOutlined />}
+              <span>{identity.access}</span>
+            </span>
+          )}
+        </div>
+        <div className="wallet-hero-name">
+          <span>{activeWallet ? identity.title : WALLET_APP_NAME}</span>
+          {hasValidAddress && (
+            // Like the last digits on a bank card: enough to tell wallets apart.
+            <span
+              className="wallet-hero-address"
+              aria-label={`${WALLET_ENDING_IN} ${walletAddress.slice(-4)}`}
+            >
+              <span aria-hidden="true">•••• {walletAddress.slice(-4)}</span>
+            </span>
+          )}
         </div>
         <div className="hero-balance-label">{TOTAL_BALANCE}</div>
         <div className="hero-balance-row">

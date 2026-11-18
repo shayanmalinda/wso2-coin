@@ -32,7 +32,7 @@ import {
   CONNECTED,
   CONNECTING,
   NOT_CONNECTED,
-  WSO2_WALLET,
+  WALLET_APP_NAME,
 } from '../../constants/strings';
 import { getCurrentBlockNumber } from '../../services/wallet.service';
 import { waitForBridge, checkBridgeReady } from '../../helpers/bridge';
@@ -112,7 +112,7 @@ const NavBar = () => {
           )}
         </Col> */}
         <Col flex="auto">
-          <span className="navbar-main-header">{WSO2_WALLET}</span>
+          <span className="navbar-main-header">{WALLET_APP_NAME}</span>
         </Col>
         {/* <Col flex="none">
           <ScanOutlined style={{ fontSize: "18px", cursor: "pointer" }} className='scan-icon' />

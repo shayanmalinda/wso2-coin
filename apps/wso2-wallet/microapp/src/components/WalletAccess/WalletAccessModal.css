@@ -16,22 +16,37 @@
  * under the License.
  */
 
+/* The side padding (cancelled by the negative margin) leaves room for focus
+   outlines, which the scroll container would otherwise clip. */
 .wallet-access {
-  padding: 4px 0;
+  margin: 0 -6px;
+  padding: 12px 6px 4px;
   text-align: left;
+  max-height: 72vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
-.wallet-access-label {
+.wallet-access-block + .wallet-access-block {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid #F0EDE8;
+}
+
+.wallet-access-heading {
   display: block;
+  margin: 0 0 10px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #1C1917;
+}
+
+.wallet-access-sublabel {
+  margin: 14px 0 8px;
   font-size: 12px;
   font-weight: 600;
   color: #78716C;
   letter-spacing: 0.2px;
-  margin-bottom: 8px;
-}
-
-.wallet-access-section {
-  margin-top: 20px;
 }
 
 .wallet-access-row {
@@ -40,48 +55,47 @@
   align-items: stretch;
 }
 
-.wallet-access-input,
-.wallet-access-select {
+/* Inputs */
+.wallet-access-input {
+  display: block;
+  width: 100%;
   min-width: 0;
-  height: 44px;
+  height: 46px;
   background: #ffffff;
   border: 1.5px solid #E5E0D8;
   border-radius: 12px;
-  padding: 0 12px;
+  padding: 0 14px;
   font-family: inherit;
-  font-size: 14px;
+  /* 16px stops iOS from zooming the page when the field is focused. */
+  font-size: 16px;
   color: #1C1917;
 }
 
-.wallet-access-input {
+.wallet-access-row > .wallet-access-input {
   flex: 1;
-  width: 100%;
 }
 
-.wallet-access-input:focus,
-.wallet-access-select:focus {
-  outline: none;
-  border-color: var(--orange-primary, #ff7300);
-}
+/* The app-wide :focus-visible outline (index.css) is the focus ring; adding a
+   coloured border here as well would draw two rings. */
 
-.wallet-access-input:disabled,
-.wallet-access-select:disabled {
+.wallet-access-input:disabled {
   background: #F5F3EF;
   color: #9CA3AF;
 }
 
+/* Buttons */
 .wallet-access-btn {
   flex-shrink: 0;
-  min-width: 72px;
-  height: 44px;
-  padding: 0 14px;
+  min-width: 76px;
+  height: 46px;
+  padding: 0 16px;
   background: #ffffff;
   border: 1.5px solid rgba(249, 115, 22, 0.5);
   border-radius: 12px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 8px;
   font-family: inherit;
   font-size: 14px;
   font-weight: 700;
@@ -96,51 +110,110 @@
   color: #ffffff;
 }
 
+.wallet-access-btn.is-block {
+  width: 100%;
+  height: 48px;
+  margin-top: 14px;
+  border-radius: 14px;
+}
+
+.wallet-access-btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
 .wallet-access-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
 
-.wallet-access-hint {
+.wallet-access-link {
+  padding: 0;
+  background: none;
+  border: none;
+  font-family: inherit;
   font-size: 12px;
-  color: #78716C;
-  line-height: 1.5;
+  font-weight: 700;
+  color: var(--orange-primary, #ff7300);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.wallet-access-hint {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #78716C;
 }
 
 .wallet-access-hint.is-error {
   color: #DC2626;
 }
 
+/* People list */
 .wallet-access-list {
   list-style: none;
   margin: 0;
   padding: 0;
-  max-height: 220px;
-  overflow-y: auto;
 }
 
 .wallet-access-person {
   display: flex;
   align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+}
+
+.wallet-access-person.is-member {
+  align-items: flex-start;
+  border-top: 1px solid #F0EDE8;
+}
+
+.wallet-access-avatar {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #F5F3EF;
+  color: #57534E;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.wallet-access-avatar.is-owner {
+  background: #FFF7ED;
+  color: var(--orange-primary, #ff7300);
+}
+
+.wallet-access-who {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
   gap: 8px;
-  padding: 8px 0;
-  border-bottom: 1px solid #F0EDE8;
 }
 
 .wallet-access-email {
-  flex: 1;
-  min-width: 0;
-  font-size: 13px;
+  font-size: 14px;
+  font-weight: 600;
   color: #1C1917;
   overflow-wrap: anywhere;
 }
 
-.wallet-access-person .wallet-access-select {
+.wallet-access-owner-tag {
   flex-shrink: 0;
-  height: 36px;
-  font-size: 12px;
-  padding: 0 6px;
+  background: #FFF7ED;
+  border: 1px solid rgba(249, 115, 22, 0.3);
+  color: var(--orange-primary, #ff7300);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 20px;
 }
 
 .wallet-access-remove {
@@ -160,19 +233,170 @@
   cursor: not-allowed;
 }
 
-.wallet-access-add {
+/* Directory matches under the search field */
+.wallet-access-suggestions {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+  background: #ffffff;
+  border: 1.5px solid #E5E0D8;
+  border-radius: 12px;
+}
+
+.wallet-access-suggestion {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.wallet-access-suggestion:active,
+.wallet-access-suggestion:hover {
+  background: #F5F3EF;
+}
+
+.wallet-access-who.is-compact {
+  gap: 1px;
+}
+
+.wallet-access-suggestion-email {
+  font-size: 12px;
+  color: #78716C;
+  overflow-wrap: anywhere;
+}
+
+img.wallet-access-avatar {
+  object-fit: cover;
+}
+
+/* Two-way switch on a person's row */
+.wallet-access-toggle {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 3px;
+  background: #F5F3EF;
+  border-radius: 10px;
+}
+
+.wallet-access-toggle-option {
+  height: 30px;
+  padding: 0 12px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: #78716C;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.wallet-access-toggle-option.is-selected {
+  background: #ffffff;
+  color: #1C1917;
+  box-shadow: 0 1px 2px rgba(28, 25, 23, 0.12);
+}
+
+.wallet-access-toggle-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* Access level cards in the add form */
+.wallet-access-cards {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin-top: 14px;
 }
 
-/* The add form stacks vertically, so the shared `flex: 1` would collapse the
-   email field's height here. */
-.wallet-access-add > .wallet-access-input {
-  flex: none;
+.wallet-access-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  background: #ffffff;
+  border: 1.5px solid #E5E0D8;
+  border-radius: 14px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.wallet-access-add .wallet-access-select {
+.wallet-access-card.is-selected {
+  background: #FFF7ED;
+  border-color: var(--orange-primary, #ff7300);
+}
+
+.wallet-access-card:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.wallet-access-card-icon {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: #F5F3EF;
+  color: #57534E;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+}
+
+.wallet-access-card.is-selected .wallet-access-card-icon {
+  background: #ffffff;
+  color: var(--orange-primary, #ff7300);
+}
+
+.wallet-access-card-text {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wallet-access-card-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1C1917;
+}
+
+.wallet-access-card-info {
+  font-size: 12px;
+  line-height: 1.45;
+  color: #78716C;
+}
+
+.wallet-access-card-check {
+  flex-shrink: 0;
+  margin-top: 2px;
+  font-size: 18px;
+  color: var(--orange-primary, #ff7300);
+}
+
+/* Keyboard focus stays visible on every control. */
+.wallet-access-btn:focus-visible,
+.wallet-access-link:focus-visible,
+.wallet-access-remove:focus-visible,
+.wallet-access-card:focus-visible,
+.wallet-access-suggestion:focus-visible,
+.wallet-access-toggle-option:focus-visible {
+  outline: 2px solid var(--orange-primary, #ff7300);
+  outline-offset: 2px;
 }

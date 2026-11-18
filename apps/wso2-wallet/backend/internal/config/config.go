@@ -19,7 +19,9 @@ package config
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 
@@ -39,6 +41,9 @@ const encryptionKeySize = 32
 // to the new address as well.
 const defaultCompanyEmailDomain = "wso2.com"
 
+// defaultPeopleEmployeeFilter selects active employees in the HR entity.
+const defaultPeopleEmployeeFilter = `{"employeeStatus": ["Active"]}`
+
 // Config is the fully resolved, validated service configuration.
 type Config struct {
 	CORSAllowedOrigin string
@@ -48,7 +53,9 @@ type Config struct {
 	InitialCoins      InitialCoinsConfig
 	// CompanyEmailDomain is the organization's email domain.
 	CompanyEmailDomain string
-	Maintenance        MaintenanceConfig
+	// People is the HR entity connection; nil when it is not configured.
+	People      *PeopleConfig
+	Maintenance MaintenanceConfig
 }
 
 // JWTConfig controls how the caller's token is verified. When JWKSURL is set the
@@ -84,6 +91,18 @@ type InitialCoinsConfig struct {
 	EmailDomain   string
 }
 
+// PeopleConfig is how to reach the HR entity GraphQL service, used to look up
+// employees when sharing a wallet.
+type PeopleConfig struct {
+	Endpoint     string
+	TokenURL     string
+	ClientID     string
+	ClientSecret string
+	Scopes       string
+	// Filter is the GraphQL EmployeeFilter that selects active employees.
+	Filter map[string]any
+}
+
 // MaintenanceConfig controls the client-facing maintenance screen.
 type MaintenanceConfig struct {
 	Mode    bool
@@ -110,6 +129,10 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	key, err := loadEncryptionKey()
+	if err != nil {
+		return Config{}, err
+	}
+	people, err := loadPeople()
 	if err != nil {
 		return Config{}, err
 	}
@@ -141,6 +164,7 @@ func Load() (Config, error) {
 		EncryptionKey:      key,
 		InitialCoins:       initialCoins,
 		CompanyEmailDomain: companyDomain,
+		People:             people,
 		Maintenance: MaintenanceConfig{
 			Mode:    envBool("MAINTENANCE_MODE", false),
 			Message: os.Getenv("MAINTENANCE_MESSAGE"),
@@ -181,6 +205,53 @@ func loadInitialCoins(companyDomain string) (InitialCoinsConfig, error) {
 	}
 	cfg.FundingWallet = funding
 	return cfg, nil
+}
+
+// loadPeople reads the HR entity connection. It is optional as a whole: with no
+// PEOPLE_API_URL the employee search is off and people are added by email. Once the
+// URL is set the credentials are required, and both URLs must be HTTPS unless they
+// point at this machine, because they carry the client secret and access token.
+func loadPeople() (*PeopleConfig, error) {
+	endpoint := os.Getenv("PEOPLE_API_URL")
+	if endpoint == "" {
+		return nil, nil
+	}
+	cfg := &PeopleConfig{Endpoint: endpoint, Scopes: os.Getenv("PEOPLE_SCOPES")}
+	var err error
+	if cfg.TokenURL, err = mustEnv("PEOPLE_TOKEN_URL"); err != nil {
+		return nil, err
+	}
+	if cfg.ClientID, err = mustEnv("PEOPLE_CLIENT_ID"); err != nil {
+		return nil, err
+	}
+	if cfg.ClientSecret, err = mustEnv("PEOPLE_CLIENT_SECRET"); err != nil {
+		return nil, err
+	}
+	// The filter is JSON because HR entity versions name the "active" filter
+	// differently (for example {"isActive": true}).
+	filter := envOrDefault("PEOPLE_EMPLOYEE_FILTER", defaultPeopleEmployeeFilter)
+	if err := json.Unmarshal([]byte(filter), &cfg.Filter); err != nil || cfg.Filter == nil {
+		return nil, fmt.Errorf("PEOPLE_EMPLOYEE_FILTER must be a JSON object")
+	}
+	for key, raw := range map[string]string{"PEOPLE_API_URL": cfg.Endpoint, "PEOPLE_TOKEN_URL": cfg.TokenURL} {
+		if err := requireSecureURL(key, raw); err != nil {
+			return nil, err
+		}
+	}
+	return cfg, nil
+}
+
+func requireSecureURL(key, raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return fmt.Errorf("%s must be a valid URL", key)
+	}
+	host := u.Hostname()
+	local := host == "localhost" || host == "127.0.0.1" || host == "::1"
+	if u.Scheme != "https" && !(u.Scheme == "http" && local) {
+		return fmt.Errorf("%s must use HTTPS", key)
+	}
+	return nil
 }
 
 func mustEnv(key string) (string, error) {

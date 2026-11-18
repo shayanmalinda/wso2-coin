@@ -19,7 +19,7 @@ import {
   getWalletBalanceByWalletAddress,
   getCurrentBlockNumber,
 } from "../services/wallet.service";
-import { getUserWalletAddresses } from "./wallet.service";
+import { getUserWalletAddresses, fetchAppConfigs } from "./wallet.service";
 
 export function useWalletBalance(walletAddress, options = {}) {
   const isValidAddress =
@@ -56,4 +56,15 @@ export function useUserWallets(walletAddress, options = {}) {
     retryDelay: (attemptIndex) => 1000 * (attemptIndex + 1),
     ...options,
   });
+}
+
+// Whether the signed-in user may share wallets. Shares the app-config query with the
+// maintenance banner, so it costs no extra request. False until the answer arrives.
+export function useCanShareWallets() {
+  const { data } = useQuery({
+    queryKey: ["app-configs"],
+    queryFn: fetchAppConfigs,
+    refetchInterval: 30000,
+  });
+  return !!data?.canShareWallets;
 }

@@ -71,6 +71,13 @@ type AccessGrant struct {
 	GrantedOn   string `json:"grantedOn"`
 }
 
+// Employee is a person in the organization, as offered when sharing a wallet.
+type Employee struct {
+	Name      string `json:"name"`
+	Email     string `json:"email"`
+	Thumbnail string `json:"thumbnail,omitempty"`
+}
+
 // AccessRequest is the body of a grant: who gets access and at what level.
 type AccessRequest struct {
 	Email       string `json:"email"`
@@ -112,6 +119,9 @@ type TransactionPage struct {
 type AppConfig struct {
 	MaintenanceMode    bool   `json:"maintenanceMode"`
 	MaintenanceMessage string `json:"maintenanceMessage"`
+	// WalletSharingEnabled is true when the caller may share wallets, that is, when
+	// they belong to the organization.
+	WalletSharingEnabled bool `json:"walletSharingEnabled"`
 }
 
 // TransferRequest is the body of a transfer.
