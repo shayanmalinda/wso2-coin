@@ -264,3 +264,10 @@
 .confirm-primary-btn-full {
   flex: 1;
 }
+
+.confirm-addr-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1C1917;
+  overflow-wrap: anywhere;
+}

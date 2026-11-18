@@ -41,6 +41,7 @@ go run ./cmd/server
 | `INITIAL_COINS_AMOUNT` | no | `10` | Amount to grant |
 | `INITIAL_COINS_FUNDING_WALLET` | yes (if enabled) | — | Wallet the grant is debited from |
 | `INITIAL_COINS_EMAIL_DOMAIN` | no | `wso2.com` | Domain eligible for the grant |
+| `SHARING_EMAIL_DOMAIN` | no | `wso2.com` | Domain both the owner and the other person must belong to for wallet sharing |
 | `MAINTENANCE_MODE` | no | `false` | Show the client maintenance screen |
 | `MAINTENANCE_MESSAGE` | no | — | Message shown when maintenance mode is on |
 
@@ -49,15 +50,42 @@ go run ./cmd/server
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/health` | Service liveness |
-| `GET` | `/api/v1/wallets` | List the caller's wallets |
+| `GET` | `/api/v1/wallets` | List the caller's own wallets and the wallets shared with them |
 | `POST` | `/api/v1/wallets` | Create a wallet |
 | `POST` | `/api/v1/wallets/{address}/set-primary` | Set the default wallet |
 | `GET` | `/api/v1/wallets/{address}/balance` | Wallet balance |
 | `GET` | `/api/v1/wallets/{address}/transactions` | Wallet history (paginated) |
 | `GET` | `/api/v1/wallets/{address}/health` | Wallet integrity |
+| `GET` | `/api/v1/wallets/{address}/info` | Wallet name, for someone sending to it |
+| `POST` | `/api/v1/wallets/{address}/name` | Set or clear the wallet name (owner) |
+| `GET` | `/api/v1/wallets/{address}/access` | List people with access (owner) |
+| `POST` | `/api/v1/wallets/{address}/access` | Grant or change access (owner) |
+| `POST` | `/api/v1/wallets/{address}/access/revoke` | Remove a person's access (owner) |
+| `POST` | `/api/v1/wallets/{address}/access/leave` | Give up your own access to a shared wallet |
 | `POST` | `/api/v1/transfers` | Transfer between wallets |
 
 See `openapi.yaml` for the full contract.
+
+## Shared wallets
+
+The owner of a wallet can give other people in the organization access to it, so a
+team can run one wallet together.
+
+- **`READ`:** see the balance and history.
+- **`TRANSACT`:** also send coins from the wallet.
+- **Owner only:** name the wallet, manage access and set it as their default wallet.
+
+A wallet can be named only while it is shared with at least one other person, and the
+name is shown only while that holds. Each transfer records who made it; the sending
+wallet's history shows it.
+
+Access rows, the wallet name and the transfer initiator are encrypted with
+`ENCRYPTION_KEY` and bound to their wallet, user or transaction. A row inserted or
+edited directly in the database fails that check and is ignored. The wallet owner
+(`user_wallet.user_email`) is not protected this way.
+
+Existing databases need `resources/migration_add_shared_wallets.sql`. It only adds
+nullable columns and one table, so it can be applied before this version is deployed.
 
 ## Layout
 

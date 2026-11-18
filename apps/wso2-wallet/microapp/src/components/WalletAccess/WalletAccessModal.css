@@ -1,0 +1,172 @@
+/*
+ * Copyright (c) 2026 WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+.wallet-access {
+  padding: 4px 0;
+  text-align: left;
+}
+
+.wallet-access-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #78716C;
+  letter-spacing: 0.2px;
+  margin-bottom: 8px;
+}
+
+.wallet-access-section {
+  margin-top: 20px;
+}
+
+.wallet-access-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.wallet-access-input,
+.wallet-access-select {
+  min-width: 0;
+  height: 44px;
+  background: #ffffff;
+  border: 1.5px solid #E5E0D8;
+  border-radius: 12px;
+  padding: 0 12px;
+  font-family: inherit;
+  font-size: 14px;
+  color: #1C1917;
+}
+
+.wallet-access-input {
+  flex: 1;
+  width: 100%;
+}
+
+.wallet-access-input:focus,
+.wallet-access-select:focus {
+  outline: none;
+  border-color: var(--orange-primary, #ff7300);
+}
+
+.wallet-access-input:disabled,
+.wallet-access-select:disabled {
+  background: #F5F3EF;
+  color: #9CA3AF;
+}
+
+.wallet-access-btn {
+  flex-shrink: 0;
+  min-width: 72px;
+  height: 44px;
+  padding: 0 14px;
+  background: #ffffff;
+  border: 1.5px solid rgba(249, 115, 22, 0.5);
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--orange-primary, #ff7300);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.wallet-access-btn.is-primary {
+  background: var(--orange-primary, #ff7300);
+  border-color: var(--orange-primary, #ff7300);
+  color: #ffffff;
+}
+
+.wallet-access-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.wallet-access-hint {
+  font-size: 12px;
+  color: #78716C;
+  line-height: 1.5;
+  margin-top: 8px;
+}
+
+.wallet-access-hint.is-error {
+  color: #DC2626;
+}
+
+.wallet-access-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.wallet-access-person {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid #F0EDE8;
+}
+
+.wallet-access-email {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: #1C1917;
+  overflow-wrap: anywhere;
+}
+
+.wallet-access-person .wallet-access-select {
+  flex-shrink: 0;
+  height: 36px;
+  font-size: 12px;
+  padding: 0 6px;
+}
+
+.wallet-access-remove {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  background: #ffffff;
+  border: 1.5px solid #E5E0D8;
+  border-radius: 10px;
+  color: #DC2626;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.wallet-access-remove:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.wallet-access-add {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.wallet-access-add .wallet-access-select {
+  flex: 1;
+}

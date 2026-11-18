@@ -28,6 +28,10 @@ import (
 
 const encryptionKeySize = 32
 
+// defaultSharingEmailDomain is the organization wallet sharing is limited to unless
+// SHARING_EMAIL_DOMAIN overrides it.
+const defaultSharingEmailDomain = "wso2.com"
+
 // Config is the fully resolved, validated service configuration.
 type Config struct {
 	CORSAllowedOrigin string
@@ -35,6 +39,7 @@ type Config struct {
 	DB                DBConfig
 	EncryptionKey     []byte
 	InitialCoins      InitialCoinsConfig
+	Sharing           SharingConfig
 	Maintenance       MaintenanceConfig
 }
 
@@ -69,6 +74,12 @@ type InitialCoinsConfig struct {
 	Amount        string
 	FundingWallet string
 	EmailDomain   string
+}
+
+// SharingConfig controls who may take part in wallet sharing.
+type SharingConfig struct {
+	// EmailDomain is the domain both the owner and the grantee must belong to.
+	EmailDomain string
 }
 
 // MaintenanceConfig controls the client-facing maintenance screen.
@@ -126,6 +137,7 @@ func Load() (Config, error) {
 		},
 		EncryptionKey: key,
 		InitialCoins:  initialCoins,
+		Sharing:       SharingConfig{EmailDomain: envOrDefault("SHARING_EMAIL_DOMAIN", defaultSharingEmailDomain)},
 		Maintenance: MaintenanceConfig{
 			Mode:    envBool("MAINTENANCE_MODE", false),
 			Message: os.Getenv("MAINTENANCE_MESSAGE"),

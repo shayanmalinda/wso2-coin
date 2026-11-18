@@ -157,6 +157,9 @@ const TransactionItem = ({ transaction, index }) => {
           copyValue={counterparty}
           copyLabel={isSend ? "Recipient's address" : "Sender's address"}
         />
+        {isSend && transaction.initiatedBy && (
+          <DetailRow label="Sent by" value={transaction.initiatedBy} />
+        )}
         <DetailRow label="When" value={fullDateTime} />
       </div>
     </div>

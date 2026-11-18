@@ -35,11 +35,13 @@ import {
   QrcodeOutlined,
   RightOutlined,
   SwapOutlined,
+  TeamOutlined,
   WalletOutlined,
 } from '@ant-design/icons';
 import { QRCodeSVG } from 'qrcode.react';
 
 import ConfirmModal from '../../components/ConfirmModal/ConfirmModal';
+import WalletAccessModal from '../../components/WalletAccess/WalletAccessModal';
 import { STORAGE_KEYS } from '../../constants/configs';
 import {
   ERROR,
@@ -72,13 +74,28 @@ import {
   SET_DEFAULT_INFO,
   SWITCHED_TO_WALLET,
   DEFAULT_WALLET_UPDATED,
+  SHARED_TAG,
+  READ_ONLY_TAG,
+  CAN_SEND_TAG,
+  MANAGE_ACCESS,
+  MANAGE_ACCESS_INFO,
+  SHARED_WITH_YOU_INFO,
+  LEAVE_WALLET,
+  CONFIRM_LEAVE_WALLET,
+  LEFT_WALLET,
+  ERROR_LEAVING_WALLET,
 } from '../../constants/strings';
 import { showToast, showAlertBox } from '../../helpers/alerts';
 import {
   getLocalDataAsync,
   saveLocalDataAsync,
 } from '../../helpers/storage';
-import { setWalletAsPrimary, createWallet } from '../../services/wallet.service';
+import {
+  WALLET_ROLE,
+  setWalletAsPrimary,
+  createWallet,
+  leaveWallet,
+} from '../../services/wallet.service';
 import { useUserWallets, useWalletBalance } from '../../services/query-hooks';
 import { formatBalance } from '../../utils/transactionUtils';
 
@@ -87,6 +104,23 @@ const formatWalletAddress = (addr) => {
   if (addr.length <= 24) return addr;
   return `${addr.slice(0, 12)}...${addr.slice(-10)}`;
 };
+
+const isOwner = (wallet) => wallet?.role === WALLET_ROLE.OWNER;
+
+// Tags describing how a wallet is shared: the owner sees "Shared", a person it is
+// shared with sees what they can do with it.
+function SharingTags({ wallet }) {
+  if (isOwner(wallet)) {
+    return wallet.shared ? (
+      <span className="profile-shared-tag">{SHARED_TAG}</span>
+    ) : null;
+  }
+  return (
+    <span className="profile-shared-tag">
+      {wallet.role === WALLET_ROLE.READ ? READ_ONLY_TAG : CAN_SEND_TAG}
+    </span>
+  );
+}
 
 // Renders a single wallet's O2C balance in the wallet list. Fetches only when the
 // list is expanded (enabled), and reuses the cached balance for the active wallet.
@@ -124,7 +158,9 @@ function Profile() {
   const [isSwitching, setIsSwitching] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [isCreateConfirmOpen, setIsCreateConfirmOpen] = useState(false);
-  const [confirmAction, setConfirmAction] = useState(null); // 'switch' | 'default'
+  const [confirmAction, setConfirmAction] = useState(null); // 'switch' | 'default' | 'leave'
+  const [isLeaving, setIsLeaving] = useState(false);
+  const [isAccessModalOpen, setIsAccessModalOpen] = useState(false);
 
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
   const [isWalletsExpanded, setIsWalletsExpanded] = useState(false);
@@ -198,6 +234,32 @@ function Profile() {
     }
   };
 
+  // Gives up the caller's own access to a wallet that was shared with them.
+  const handleLeaveWallet = async () => {
+    if (!selectedWallet || isOwner(selectedWallet)) return;
+    setIsLeaving(true);
+    try {
+      await leaveWallet(selectedWallet.walletAddress);
+      const wasActive =
+        walletAddress &&
+        selectedWallet.walletAddress.toLowerCase() === walletAddress.toLowerCase();
+      if (wasActive) {
+        // Home falls back to the default wallet when the stored one is gone.
+        await saveLocalDataAsync(STORAGE_KEYS.WALLET_ADDRESS, '');
+      }
+      setConfirmAction(null);
+      setIsWalletModalOpen(false);
+      showToast(SUCCESS, LEFT_WALLET);
+      await queryClient.invalidateQueries({ queryKey: ['userWallets'] });
+      if (wasActive) navigate('/');
+    } catch (error) {
+      console.error('Error leaving wallet:', error);
+      showAlertBox(ERROR, ERROR_LEAVING_WALLET, OK);
+    } finally {
+      setIsLeaving(false);
+    }
+  };
+
   const createNewWallet = async () => {
     setIsCreating(true);
     try {
@@ -233,9 +295,13 @@ function Profile() {
             selectedWallet.walletAddress.toLowerCase() ===
               walletAddress.toLowerCase();
           const isPrimary = selectedWallet.defaultWallet;
-          const showTagRow = isActive || isPrimary;
+          const owned = isOwner(selectedWallet);
+          const showTagRow = isActive || isPrimary || !owned || selectedWallet.shared;
           return (
             <div className="profile-modal">
+              {selectedWallet.name && (
+                <div className="profile-modal-name">{selectedWallet.name}</div>
+              )}
               <CopyToClipboard
                 text={selectedWallet.walletAddress}
                 onCopy={handleCopyAddress}
@@ -260,6 +326,7 @@ function Profile() {
                   {isActive && (
                     <span className="profile-active-tag">{CURRENTLY_VIEWING}</span>
                   )}
+                  <SharingTags wallet={selectedWallet} />
                 </div>
               )}
 
@@ -286,6 +353,8 @@ function Profile() {
                     {isActive ? ACTIVE_WALLET_INFO : SWITCH_WALLET_INFO}
                   </div>
                 </div>
+                {owned ? (
+                  <>
                 <div className="profile-modal-action">
                   <button
                     type="button"
@@ -304,6 +373,35 @@ function Profile() {
                     {isPrimary ? DEFAULT_REWARDS_INFO : SET_DEFAULT_INFO}
                   </div>
                 </div>
+                <div className="profile-modal-action">
+                  <button
+                    type="button"
+                    className="profile-modal-outline-btn"
+                    onClick={() => setIsAccessModalOpen(true)}
+                  >
+                    <TeamOutlined style={{ fontSize: 14 }} />
+                    <span>{MANAGE_ACCESS}</span>
+                  </button>
+                  <div className="profile-modal-action-hint">
+                    {MANAGE_ACCESS_INFO}
+                  </div>
+                </div>
+                  </>
+                ) : (
+                  <div className="profile-modal-action">
+                    <button
+                      type="button"
+                      className="profile-modal-outline-btn is-danger"
+                      onClick={() => setConfirmAction('leave')}
+                      disabled={isLeaving}
+                    >
+                      <span>{LEAVE_WALLET}</span>
+                    </button>
+                    <div className="profile-modal-action-hint">
+                      {SHARED_WITH_YOU_INFO}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           );
@@ -348,20 +446,38 @@ function Profile() {
         onCancel={() => setIsCreateConfirmOpen(false)}
       />
 
-      {/* Switch / Set-default Confirmation */}
-      <ConfirmModal
-        open={confirmAction !== null}
-        title={confirmAction === 'switch' ? SWITCH_TO_THIS_WALLET : SET_AS_DEFAULT}
-        description={
-          confirmAction === 'switch' ? CONFIRM_SWITCH_WALLET : CONFIRM_SET_DEFAULT
+      {/* Switch / Set-default / Leave Confirmation */}
+      {(() => {
+        const confirms = {
+          switch: [SWITCH_TO_THIS_WALLET, CONFIRM_SWITCH_WALLET, handleSwitchToWallet],
+          default: [SET_AS_DEFAULT, CONFIRM_SET_DEFAULT, handleSetAsDefault],
+          leave: [LEAVE_WALLET, CONFIRM_LEAVE_WALLET, handleLeaveWallet],
+        };
+        const [title, description, onConfirm] = confirms[confirmAction] || [];
+        return (
+          <ConfirmModal
+            open={confirmAction !== null}
+            title={title}
+            description={description}
+            confirmText={CONFIRM}
+            cancelText={CANCEL}
+            loading={isSwitching || isSettingPrimary || isLeaving}
+            onConfirm={onConfirm}
+            onCancel={() => setConfirmAction(null)}
+          />
+        );
+      })()}
+
+      {/* Naming and sharing, for wallets the user owns */}
+      <WalletAccessModal
+        open={isAccessModalOpen}
+        wallet={
+          // Read the wallet from the fresh list so a saved name shows straight away.
+          userWallets.find(
+            (w) => w.walletAddress === selectedWallet?.walletAddress,
+          ) || selectedWallet
         }
-        confirmText={CONFIRM}
-        cancelText={CANCEL}
-        loading={isSwitching || isSettingPrimary}
-        onConfirm={
-          confirmAction === 'switch' ? handleSwitchToWallet : handleSetAsDefault
-        }
-        onCancel={() => setConfirmAction(null)}
+        onClose={() => setIsAccessModalOpen(false)}
       />
 
       <div className="profile-section">
@@ -487,6 +603,9 @@ function Profile() {
                           }}
                         >
                           <span className="profile-wallet-info">
+                            {wallet.name && (
+                              <span className="profile-wallet-name">{wallet.name}</span>
+                            )}
                             <span className="profile-wallet-addr">
                               {formatWalletAddress(wallet.walletAddress)}
                             </span>
@@ -505,6 +624,7 @@ function Profile() {
                             {wallet.defaultWallet && (
                               <span className="profile-primary-tag">{DEFAULT_TAG}</span>
                             )}
+                            <SharingTags wallet={wallet} />
                           </span>
                         </button>
                       );

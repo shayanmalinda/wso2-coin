@@ -20,12 +20,16 @@ package wallet
 import (
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math/big"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/wso2/wso2-coin/apps/wso2-wallet/backend/internal/model"
 	"github.com/wso2/wso2-coin/apps/wso2-wallet/backend/internal/money"
@@ -45,7 +49,14 @@ var (
 	ErrRecipientNotFound = errors.New("recipient wallet not found")
 	ErrSelfTransfer      = errors.New("cannot transfer to the same wallet")
 	ErrIntegrity         = errors.New("balance integrity check failed")
+	ErrInvalidName       = errors.New("invalid wallet name")
+	ErrNameNotAllowed    = errors.New("wallet must be shared before it can be named")
+	ErrInvalidGrant      = errors.New("invalid access grant")
+	ErrDomainNotAllowed  = errors.New("email domain not allowed for wallet sharing")
 )
+
+// maxNameLength is the longest wallet name accepted, in characters.
+const maxNameLength = 50
 
 // Encryptor authenticates and (de)encrypts stored values, binding them to an AAD.
 type Encryptor interface {
@@ -61,30 +72,61 @@ type InitialCoins struct {
 	EmailDomain   string
 }
 
+// Sharing configures who may take part in wallet sharing.
+type Sharing struct {
+	// EmailDomain is the domain both the owner and the grantee must belong to.
+	EmailDomain string
+}
+
 // Service holds wallet business logic.
 type Service struct {
 	repo         Repository
 	enc          Encryptor
 	initialCoins InitialCoins
+	sharing      Sharing
 }
 
 // NewService returns a wallet Service.
-func NewService(repo Repository, enc Encryptor, initialCoins InitialCoins) *Service {
-	return &Service{repo: repo, enc: enc, initialCoins: initialCoins}
+func NewService(repo Repository, enc Encryptor, initialCoins InitialCoins, sharing Sharing) *Service {
+	return &Service{repo: repo, enc: enc, initialCoins: initialCoins, sharing: sharing}
 }
 
-// ListWallets returns the caller's wallets.
+// ListWallets returns the wallets the caller owns, followed by the wallets shared
+// with them.
 func (s *Service) ListWallets(ctx context.Context, email string) ([]model.Wallet, error) {
-	rows, err := s.repo.WalletsByEmail(ctx, email)
+	owned, err := s.repo.WalletsByEmail(ctx, email)
 	if err != nil {
 		return nil, err
 	}
-	wallets := make([]model.Wallet, 0, len(rows))
-	for _, w := range rows {
+	shared, err := s.repo.SharedWalletsByEmail(ctx, normEmail(email))
+	if err != nil {
+		return nil, err
+	}
+	wallets := make([]model.Wallet, 0, len(owned)+len(shared))
+	for i := range owned {
+		w := &owned[i]
 		wallets = append(wallets, model.Wallet{
 			Address:       w.Address,
 			DefaultWallet: w.DefaultWallet,
 			CreatedOn:     w.CreatedOn.UTC().Format(time.RFC3339),
+			Name:          s.displayName(ctx, w),
+			Role:          model.RoleOwner,
+			Shared:        w.GrantCount > 0,
+		})
+	}
+	for i := range shared {
+		w := &shared[i].Wallet
+		role, ok := s.grantRole(shared[i].Grant)
+		if !ok {
+			slog.WarnContext(ctx, "ignoring wallet grant that failed its integrity check", "wallet", w.Address)
+			continue
+		}
+		wallets = append(wallets, model.Wallet{
+			Address:   w.Address,
+			CreatedOn: w.CreatedOn.UTC().Format(time.RFC3339),
+			Name:      s.displayName(ctx, w),
+			Role:      role,
+			Shared:    true,
 		})
 	}
 	return wallets, nil
@@ -131,7 +173,9 @@ func (s *Service) CreateWallet(ctx context.Context, email string) (model.Wallet,
 		return model.Wallet{}, err
 	}
 
-	return model.Wallet{Address: address, DefaultWallet: isDefault, CreatedOn: time.Now().UTC().Format(time.RFC3339)}, nil
+	return model.Wallet{
+		Address: address, DefaultWallet: isDefault, CreatedOn: time.Now().UTC().Format(time.RFC3339), Role: model.RoleOwner,
+	}, nil
 }
 
 func (s *Service) allocationApplies(email string) bool {
@@ -188,9 +232,9 @@ func (s *Service) SetPrimary(ctx context.Context, email, address string) error {
 	return s.repo.SetPrimary(ctx, email, w.Address)
 }
 
-// Balance returns the decrypted balance of one of the caller's wallets.
+// Balance returns the decrypted balance of a wallet the caller can access.
 func (s *Service) Balance(ctx context.Context, email, address string) (model.Balance, error) {
-	w, err := s.ownedWallet(ctx, email, address)
+	w, _, err := s.access(ctx, email, address)
 	if err != nil {
 		return model.Balance{}, err
 	}
@@ -201,9 +245,9 @@ func (s *Service) Balance(ctx context.Context, email, address string) (model.Bal
 	return model.Balance{Address: w.Address, Balance: plain}, nil
 }
 
-// Transactions returns a page of the caller's wallet history, newest first.
+// Transactions returns a page of history, newest first, for a wallet the caller can access.
 func (s *Service) Transactions(ctx context.Context, email, address string, limit, offset int, direction string) (model.TransactionPage, error) {
-	w, err := s.ownedWallet(ctx, email, address)
+	w, _, err := s.access(ctx, email, address)
 	if err != nil {
 		return model.TransactionPage{}, err
 	}
@@ -222,13 +266,15 @@ func (s *Service) Transactions(ctx context.Context, email, address string, limit
 		if err != nil {
 			return model.TransactionPage{}, ErrIntegrity
 		}
+		dir := directionFor(w.Address, row.FromAddress)
 		txns = append(txns, model.Transaction{
 			TransactionHash: transactionHash(row),
 			FromAddress:     row.FromAddress,
 			ToAddress:       row.ToAddress,
 			Amount:          amount,
-			Direction:       directionFor(w.Address, row.FromAddress),
+			Direction:       dir,
 			Timestamp:       transactionTime(row).UTC().Format(time.RFC3339),
+			InitiatedBy:     s.initiator(ctx, row, dir),
 		})
 	}
 	return model.TransactionPage{Transactions: txns, Limit: limit, Offset: offset, HasMore: hasMore}, nil
@@ -243,9 +289,12 @@ func (s *Service) Transfer(ctx context.Context, email string, req model.Transfer
 	if strings.EqualFold(req.FromAddress, req.ToAddress) {
 		return model.TransferResponse{}, ErrSelfTransfer
 	}
-	from, err := s.ownedWallet(ctx, email, req.FromAddress)
+	from, role, err := s.access(ctx, email, req.FromAddress)
 	if err != nil {
 		return model.TransferResponse{}, err
+	}
+	if role == model.RoleRead {
+		return model.TransferResponse{}, ErrForbidden
 	}
 	to, err := s.repo.WalletByAddress(ctx, req.ToAddress)
 	if err != nil {
@@ -260,6 +309,10 @@ func (s *Service) Transfer(ctx context.Context, email string, req model.Transfer
 		return model.TransferResponse{}, err
 	}
 	encAmount, err := s.enc.Encrypt(money.FormatUnits(amount), amountAADForRef(ref))
+	if err != nil {
+		return model.TransferResponse{}, err
+	}
+	encInitiator, err := s.enc.Encrypt(normEmail(email), initiatorAAD(ref))
 	if err != nil {
 		return model.TransferResponse{}, err
 	}
@@ -287,7 +340,10 @@ func (s *Service) Transfer(ctx context.Context, email string, req model.Transfer
 		if err := q.UpdateBalance(ctx, to.Address, encTo); err != nil {
 			return err
 		}
-		return q.InsertTransaction(ctx, TxnInsert{FromAddress: from.Address, ToAddress: to.Address, Amount: encAmount, Reference: ref, Source: sourceWalletApp})
+		return q.InsertTransaction(ctx, TxnInsert{
+			FromAddress: from.Address, ToAddress: to.Address, Amount: encAmount, Reference: ref,
+			Source: sourceWalletApp, InitiatedBy: encInitiator,
+		})
 	})
 	if err != nil {
 		return model.TransferResponse{}, err
@@ -304,12 +360,201 @@ func (s *Service) WalletHealth(ctx context.Context, email, address string) (mode
 	if w == nil {
 		return model.WalletHealth{Healthy: false, Exists: false, BalanceIntact: false}, nil
 	}
-	if !ownedBy(w, email) {
-		return model.WalletHealth{}, ErrForbidden
+	if _, _, err := s.access(ctx, email, address); err != nil {
+		return model.WalletHealth{}, err
 	}
 	_, decErr := s.decryptBalance(w)
 	intact := decErr == nil
 	return model.WalletHealth{Healthy: intact, Exists: true, BalanceIntact: intact}, nil
+}
+
+// Rename sets the display name of a wallet the caller owns. A wallet can only be
+// named while it is shared, so personal wallets cannot carry a made-up name. An
+// empty name clears it.
+func (s *Service) Rename(ctx context.Context, email, address, name string) error {
+	w, err := s.ownedWallet(ctx, email, address)
+	if err != nil {
+		return err
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return s.repo.SetWalletName(ctx, w.Address, sql.NullString{})
+	}
+	if !validName(name) {
+		return ErrInvalidName
+	}
+	if w.GrantCount == 0 {
+		return ErrNameNotAllowed
+	}
+	enc, err := s.enc.Encrypt(name, nameAAD(w.Address))
+	if err != nil {
+		return err
+	}
+	return s.repo.SetWalletName(ctx, w.Address, sql.NullString{String: enc, Valid: true})
+}
+
+// WalletInfo returns what anyone may know about a wallet before sending to it: that
+// it exists and, while it is shared, its name.
+func (s *Service) WalletInfo(ctx context.Context, address string) (model.WalletInfo, error) {
+	w, err := s.repo.WalletByAddress(ctx, address)
+	if err != nil {
+		return model.WalletInfo{}, err
+	}
+	if w == nil {
+		return model.WalletInfo{}, ErrNotFound
+	}
+	return model.WalletInfo{Address: w.Address, Name: s.displayName(ctx, w)}, nil
+}
+
+// ListAccess returns the people the owner has shared the wallet with.
+func (s *Service) ListAccess(ctx context.Context, email, address string) ([]model.AccessGrant, error) {
+	w, err := s.ownedWallet(ctx, email, address)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.repo.Grants(ctx, w.Address)
+	if err != nil {
+		return nil, err
+	}
+	grants := make([]model.AccessGrant, 0, len(rows))
+	for _, g := range rows {
+		role, ok := s.grantRole(g)
+		if !ok {
+			slog.WarnContext(ctx, "ignoring wallet grant that failed its integrity check", "wallet", w.Address)
+			continue
+		}
+		grants = append(grants, model.AccessGrant{
+			Email:       g.Email,
+			AccessLevel: role,
+			GrantedBy:   g.GrantedBy,
+			GrantedOn:   g.CreatedOn.UTC().Format(time.RFC3339),
+		})
+	}
+	return grants, nil
+}
+
+// GrantAccess gives a person access to a wallet the caller owns, or changes the
+// level of an existing grant. Both people must belong to the sharing domain.
+func (s *Service) GrantAccess(ctx context.Context, email, address string, req model.AccessRequest) error {
+	w, err := s.ownedWallet(ctx, email, address)
+	if err != nil {
+		return err
+	}
+	grantee := normEmail(req.Email)
+	if !validEmail(grantee) || ownedBy(w, grantee) {
+		return ErrInvalidGrant
+	}
+	if req.AccessLevel != model.RoleRead && req.AccessLevel != model.RoleTransact {
+		return ErrInvalidGrant
+	}
+	if !s.inSharingDomain(email) || !s.inSharingDomain(grantee) {
+		return ErrDomainNotAllowed
+	}
+	seal, err := s.enc.Encrypt(string(req.AccessLevel), accessAAD(w.Address, grantee))
+	if err != nil {
+		return err
+	}
+	return s.repo.UpsertGrant(ctx, GrantRow{
+		Address: w.Address, Email: grantee, Level: string(req.AccessLevel), Seal: seal, GrantedBy: normEmail(email),
+	})
+}
+
+// RevokeAccess removes a person's access. The owner can remove anyone; a person
+// with access can remove themselves.
+func (s *Service) RevokeAccess(ctx context.Context, email, address, grantee string) error {
+	w, err := s.repo.WalletByAddress(ctx, address)
+	if err != nil {
+		return err
+	}
+	if w == nil {
+		return ErrNotFound
+	}
+	grantee = normEmail(grantee)
+	if !ownedBy(w, email) && grantee != normEmail(email) {
+		return ErrForbidden
+	}
+	removed, err := s.repo.DeleteGrant(ctx, w.Address, grantee)
+	if err != nil {
+		return err
+	}
+	if !removed {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// access resolves what the caller may do with a wallet: the owner gets RoleOwner,
+// a person with a valid grant gets that grant's role, and anyone else is refused.
+func (s *Service) access(ctx context.Context, email, address string) (*WalletRow, model.Role, error) {
+	w, err := s.repo.WalletByAddress(ctx, address)
+	if err != nil {
+		return nil, "", err
+	}
+	if w == nil {
+		return nil, "", ErrNotFound
+	}
+	if ownedBy(w, email) {
+		return w, model.RoleOwner, nil
+	}
+	g, err := s.repo.Grant(ctx, w.Address, normEmail(email))
+	if err != nil {
+		return nil, "", err
+	}
+	if g == nil {
+		return nil, "", ErrForbidden
+	}
+	role, ok := s.grantRole(*g)
+	if !ok {
+		slog.WarnContext(ctx, "denying access: wallet grant failed its integrity check", "wallet", w.Address)
+		return nil, "", ErrForbidden
+	}
+	return w, role, nil
+}
+
+// grantRole verifies a grant's seal and returns its role. A row written or edited
+// without the encryption key fails here and grants nothing.
+func (s *Service) grantRole(g GrantRow) (model.Role, bool) {
+	sealed, err := s.enc.Decrypt(g.Seal, accessAAD(g.Address, g.Email))
+	if err != nil || sealed != g.Level {
+		return "", false
+	}
+	switch role := model.Role(sealed); role {
+	case model.RoleRead, model.RoleTransact:
+		return role, true
+	}
+	return "", false
+}
+
+// displayName returns the wallet's name, or "" when it has none or is not shared.
+func (s *Service) displayName(ctx context.Context, w *WalletRow) string {
+	if w.GrantCount == 0 || !w.Name.Valid || w.Name.String == "" {
+		return ""
+	}
+	name, err := s.enc.Decrypt(w.Name.String, nameAAD(w.Address))
+	if err != nil {
+		slog.WarnContext(ctx, "ignoring wallet name that failed its integrity check", "wallet", w.Address)
+		return ""
+	}
+	return name
+}
+
+// initiator returns who made a transfer, for transfers sent from the viewed wallet.
+// The recipient's side never sees it.
+func (s *Service) initiator(ctx context.Context, row TxnRow, dir model.Direction) string {
+	if dir != model.DirectionSent || !row.InitiatedBy.Valid || row.InitiatedBy.String == "" || !row.Reference.Valid {
+		return ""
+	}
+	email, err := s.enc.Decrypt(row.InitiatedBy.String, initiatorAAD(row.Reference.String))
+	if err != nil {
+		slog.WarnContext(ctx, "ignoring transaction initiator that failed its integrity check", "reference", row.Reference.String)
+		return ""
+	}
+	return email
+}
+
+func (s *Service) inSharingDomain(email string) bool {
+	domain := strings.ToLower(strings.TrimSpace(s.sharing.EmailDomain))
+	return domain != "" && strings.HasSuffix(normEmail(email), "@"+domain)
 }
 
 func (s *Service) ownedWallet(ctx context.Context, email, address string) (*WalletRow, error) {
@@ -391,6 +636,40 @@ func transactionTime(row TxnRow) time.Time {
 		return row.BlockTime.Time
 	}
 	return row.CreatedOn
+}
+
+func normEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}
+
+// validEmail is a shape check only; the sharing-domain check does the real gating.
+func validEmail(email string) bool {
+	local, domain, ok := strings.Cut(email, "@")
+	return ok && local != "" && domain != "" && !strings.ContainsAny(email, " \t\r\n") && !strings.Contains(domain, "@")
+}
+
+func validName(name string) bool {
+	if utf8.RuneCountInString(name) > maxNameLength {
+		return false
+	}
+	for _, r := range name {
+		if !unicode.IsPrint(r) {
+			return false
+		}
+	}
+	return true
+}
+
+func accessAAD(address, email string) string {
+	return "o2c:access:" + strings.ToLower(address) + ":" + normEmail(email)
+}
+
+func nameAAD(address string) string {
+	return "o2c:name:" + strings.ToLower(address)
+}
+
+func initiatorAAD(reference string) string {
+	return "o2c:initiator:ref:" + reference
 }
 
 func balanceAAD(address string) string {

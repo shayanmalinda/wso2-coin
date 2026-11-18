@@ -52,10 +52,20 @@ const request = async (path, { method = "GET", body } = {}) => {
   return response.json();
 };
 
+export const WALLET_ROLE = {
+  OWNER: "OWNER",
+  TRANSACT: "TRANSACT",
+  READ: "READ",
+};
+
 const toWallet = (w) => ({
   walletAddress: w.address,
   defaultWallet: w.defaultWallet,
   createdOn: w.createdOn,
+  name: w.name || "",
+  // Older backends send no role; every wallet they return is the caller's own.
+  role: w.role || WALLET_ROLE.OWNER,
+  shared: !!w.shared,
 });
 
 export const getUserWalletAddresses = async () => {
@@ -72,6 +82,38 @@ export const getWalletBalanceByWalletAddress = async (walletAddress) => {
   const { balance } = await request(`/wallets/${walletAddress}/balance`);
   return balance;
 };
+
+// Name of a wallet as shown to someone sending to it; "" when it has none or the
+// lookup fails, so a missing name never blocks a transfer.
+export const getWalletName = async (walletAddress) => {
+  try {
+    const info = await request(`/wallets/${walletAddress}/info`);
+    return info?.name || "";
+  } catch (_) {
+    return "";
+  }
+};
+
+export const renameWallet = (walletAddress, name) =>
+  request(`/wallets/${walletAddress}/name`, { method: "POST", body: { name } });
+
+export const getWalletAccess = async (walletAddress) =>
+  (await request(`/wallets/${walletAddress}/access`)) || [];
+
+export const grantWalletAccess = (walletAddress, email, accessLevel) =>
+  request(`/wallets/${walletAddress}/access`, {
+    method: "POST",
+    body: { email, accessLevel },
+  });
+
+export const revokeWalletAccess = (walletAddress, email) =>
+  request(`/wallets/${walletAddress}/access/revoke`, {
+    method: "POST",
+    body: { email },
+  });
+
+export const leaveWallet = (walletAddress) =>
+  request(`/wallets/${walletAddress}/access/leave`, { method: "POST" });
 
 export const getWalletHealth = (walletAddress) => request(`/wallets/${walletAddress}/health`);
 
@@ -127,6 +169,7 @@ export const getTransactionHistory = async (
       timestamp: blockTimestamp ? formatTimestamp(new Date(blockTimestamp).toISOString()) : "Unknown time",
       direction: t.direction === "sent" ? "send" : "receive",
       runningBalance: null,
+      initiatedBy: t.initiatedBy || "",
     };
   });
   return {

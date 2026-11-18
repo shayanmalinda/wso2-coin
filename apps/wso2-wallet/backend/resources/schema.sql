@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS user_wallet (
     default_wallet          BOOLEAN NOT NULL DEFAULT FALSE,
     initial_coins_allocated DECIMAL(20, 10) NOT NULL DEFAULT 0,
     total_balance           VARCHAR(255) NULL COMMENT 'Encrypted current balance',
+    wallet_name             VARCHAR(512) NULL COMMENT 'Encrypted display name; shown only while the wallet is shared',
     created_on              TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_user_email (user_email)
 );
@@ -33,6 +34,7 @@ CREATE TABLE IF NOT EXISTS `transaction` (
     amount             VARCHAR(255) NOT NULL COMMENT 'Encrypted transferred amount',
     reference          VARCHAR(66) NULL COMMENT 'Unique transaction reference',
     source             VARCHAR(32) NULL COMMENT 'Originating channel/app',
+    initiated_by       VARCHAR(512) NULL COMMENT 'Encrypted email of the user who initiated the transfer',
     created_on         TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     tx_type            VARCHAR(20) NULL COMMENT 'Optional source metadata',
     tx_hash            VARCHAR(66) NULL COMMENT 'Optional source metadata',
@@ -43,4 +45,17 @@ CREATE TABLE IF NOT EXISTS `transaction` (
     UNIQUE KEY uq_tx_log (tx_hash, tx_log_index),
     INDEX idx_from (from_address),
     INDEX idx_to (to_address)
+);
+
+-- People other than the owner who may use a wallet. The owner stays in
+-- user_wallet.user_email and never has a row here.
+CREATE TABLE IF NOT EXISTS wallet_access (
+    wallet_address VARCHAR(255) NOT NULL,
+    user_email     VARCHAR(255) NOT NULL,
+    access_level   VARCHAR(16)  NOT NULL COMMENT 'READ or TRANSACT',
+    seal           VARCHAR(255) NOT NULL COMMENT 'Encrypted access level bound to the wallet and user; rows that fail it are ignored',
+    granted_by     VARCHAR(255) NOT NULL,
+    created_on     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (wallet_address, user_email),
+    INDEX idx_access_email (user_email)
 );

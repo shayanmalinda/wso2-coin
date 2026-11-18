@@ -99,3 +99,40 @@ export const ERROR_BRIDGE_NOT_READY = "Connection not ready. Please try again.";
 // Success messages
 export const SUCCESS_TOKEN_TRANSFER = "Coins sent successfully";
 export const SUCCESS_WALLET_CREATED = "Wallet created";
+
+// Shared wallets
+export const SHARED_TAG = "Shared";
+export const READ_ONLY_TAG = "View only";
+export const CAN_SEND_TAG = "Can send";
+export const MANAGE_ACCESS = "Manage access";
+export const MANAGE_ACCESS_INFO =
+  "Name this wallet and choose who else can view or send from it.";
+export const SHARED_WITH_YOU_INFO =
+  "This wallet is shared with you. Only its owner can manage it.";
+export const LEAVE_WALLET = "Leave this wallet";
+export const CONFIRM_LEAVE_WALLET =
+  "You will lose access to this wallet. Only its owner can add you back.";
+export const LEFT_WALLET = "You left the wallet";
+export const ERROR_LEAVING_WALLET = "Couldn't leave the wallet";
+export const READ_ONLY_SEND_INFO =
+  "You have view-only access to this wallet, so you can't send from it.";
+export const ACCESS_LEVEL_READ = "View only";
+export const ACCESS_LEVEL_TRANSACT = "View and send";
+export const WALLET_NAME = "Wallet name";
+export const WALLET_NAME_PLACEHOLDER = "e.g. HR Team";
+export const WALLET_NAME_NEEDS_SHARING =
+  "Add at least one person before naming this wallet.";
+export const WALLET_NAME_SAVED = "Wallet name saved";
+export const ERROR_SAVING_WALLET_NAME = "Couldn't save the wallet name";
+export const PEOPLE_WITH_ACCESS = "People with access";
+export const NO_ONE_HAS_ACCESS = "Only you can use this wallet.";
+export const ADD_PERSON = "Add";
+export const ADD_PERSON_PLACEHOLDER = "name@wso2.com";
+export const ACCESS_UPDATED = "Access updated";
+export const ACCESS_REMOVED = "Access removed";
+export const ERROR_LOADING_ACCESS = "Couldn't load who has access";
+export const ERROR_UPDATING_ACCESS = "Couldn't update access";
+export const REMOVE_ACCESS = "Remove access";
+export const CONFIRM_REMOVE_ACCESS = "will no longer be able to use this wallet.";
+export const REMOVE = "Remove";
+export const SAVE = "Save";

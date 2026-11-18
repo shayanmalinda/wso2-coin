@@ -27,11 +27,58 @@ const (
 	DirectionReceived Direction = "received"
 )
 
-// Wallet is a wallet owned by the caller.
+// Role is what the caller may do with a wallet.
+type Role string
+
+const (
+	// RoleOwner may view, transfer, rename and manage access.
+	RoleOwner Role = "OWNER"
+	// RoleTransact may view and transfer.
+	RoleTransact Role = "TRANSACT"
+	// RoleRead may only view the balance and history.
+	RoleRead Role = "READ"
+)
+
+// Wallet is a wallet the caller owns or has been granted access to.
 type Wallet struct {
 	Address       string `json:"address"`
 	DefaultWallet bool   `json:"defaultWallet"`
 	CreatedOn     string `json:"createdOn"`
+	// Name is set only while the wallet is shared with at least one other person.
+	Name string `json:"name,omitempty"`
+	Role Role   `json:"role"`
+	// Shared reports whether anyone other than the owner has access.
+	Shared bool `json:"shared"`
+}
+
+// WalletInfo is the public description of a wallet, shown to someone sending to it.
+type WalletInfo struct {
+	Address string `json:"address"`
+	Name    string `json:"name,omitempty"`
+}
+
+// RenameRequest is the body of a wallet rename. An empty name clears it.
+type RenameRequest struct {
+	Name string `json:"name"`
+}
+
+// AccessGrant is one person's access to a shared wallet.
+type AccessGrant struct {
+	Email       string `json:"email"`
+	AccessLevel Role   `json:"accessLevel"`
+	GrantedBy   string `json:"grantedBy"`
+	GrantedOn   string `json:"grantedOn"`
+}
+
+// AccessRequest is the body of a grant: who gets access and at what level.
+type AccessRequest struct {
+	Email       string `json:"email"`
+	AccessLevel Role   `json:"accessLevel"`
+}
+
+// RevokeRequest is the body of a revoke: whose access to remove.
+type RevokeRequest struct {
+	Email string `json:"email"`
 }
 
 // Balance is a wallet's current balance.
@@ -48,6 +95,8 @@ type Transaction struct {
 	Amount          string    `json:"amount"`
 	Direction       Direction `json:"direction"`
 	Timestamp       string    `json:"timestamp"`
+	// InitiatedBy is who made the transfer; set only on transfers sent from the wallet.
+	InitiatedBy string `json:"initiatedBy,omitempty"`
 }
 
 // TransactionPage is a paginated slice of transactions.

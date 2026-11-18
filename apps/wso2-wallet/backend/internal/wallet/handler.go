@@ -51,6 +51,12 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/wallets/{address}/balance", h.balance)
 	mux.HandleFunc("GET /api/v1/wallets/{address}/transactions", h.transactions)
 	mux.HandleFunc("GET /api/v1/wallets/{address}/health", h.walletHealth)
+	mux.HandleFunc("GET /api/v1/wallets/{address}/info", h.walletInfo)
+	mux.HandleFunc("POST /api/v1/wallets/{address}/name", h.rename)
+	mux.HandleFunc("GET /api/v1/wallets/{address}/access", h.listAccess)
+	mux.HandleFunc("POST /api/v1/wallets/{address}/access", h.grantAccess)
+	mux.HandleFunc("POST /api/v1/wallets/{address}/access/revoke", h.revokeAccess)
+	mux.HandleFunc("POST /api/v1/wallets/{address}/access/leave", h.leaveWallet)
 	mux.HandleFunc("POST /api/v1/transfers", h.transfer)
 }
 
@@ -132,6 +138,95 @@ func (h *Handler) walletHealth(w http.ResponseWriter, r *http.Request) {
 	response.WriteJSON(w, http.StatusOK, health)
 }
 
+func (h *Handler) walletInfo(w http.ResponseWriter, r *http.Request) {
+	if _, ok := caller(w, r); !ok {
+		return
+	}
+	info, err := h.svc.WalletInfo(r.Context(), r.PathValue("address"))
+	if err != nil {
+		writeServiceError(r.Context(), w, err)
+		return
+	}
+	response.WriteJSON(w, http.StatusOK, info)
+}
+
+func (h *Handler) rename(w http.ResponseWriter, r *http.Request) {
+	email, ok := caller(w, r)
+	if !ok {
+		return
+	}
+	var req model.RenameRequest
+	if err := response.DecodeJSON(w, r, &req); err != nil {
+		response.WriteDecodeError(w, err)
+		return
+	}
+	if err := h.svc.Rename(r.Context(), email, r.PathValue("address"), req.Name); err != nil {
+		writeServiceError(r.Context(), w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) listAccess(w http.ResponseWriter, r *http.Request) {
+	email, ok := caller(w, r)
+	if !ok {
+		return
+	}
+	grants, err := h.svc.ListAccess(r.Context(), email, r.PathValue("address"))
+	if err != nil {
+		writeServiceError(r.Context(), w, err)
+		return
+	}
+	response.WriteJSON(w, http.StatusOK, grants)
+}
+
+func (h *Handler) grantAccess(w http.ResponseWriter, r *http.Request) {
+	email, ok := caller(w, r)
+	if !ok {
+		return
+	}
+	var req model.AccessRequest
+	if err := response.DecodeJSON(w, r, &req); err != nil {
+		response.WriteDecodeError(w, err)
+		return
+	}
+	if err := h.svc.GrantAccess(r.Context(), email, r.PathValue("address"), req); err != nil {
+		writeServiceError(r.Context(), w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) revokeAccess(w http.ResponseWriter, r *http.Request) {
+	email, ok := caller(w, r)
+	if !ok {
+		return
+	}
+	var req model.RevokeRequest
+	if err := response.DecodeJSON(w, r, &req); err != nil {
+		response.WriteDecodeError(w, err)
+		return
+	}
+	if err := h.svc.RevokeAccess(r.Context(), email, r.PathValue("address"), req.Email); err != nil {
+		writeServiceError(r.Context(), w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// leaveWallet removes the caller's own access to a wallet shared with them.
+func (h *Handler) leaveWallet(w http.ResponseWriter, r *http.Request) {
+	email, ok := caller(w, r)
+	if !ok {
+		return
+	}
+	if err := h.svc.RevokeAccess(r.Context(), email, r.PathValue("address"), email); err != nil {
+		writeServiceError(r.Context(), w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *Handler) transfer(w http.ResponseWriter, r *http.Request) {
 	email, ok := caller(w, r)
 	if !ok {
@@ -193,6 +288,14 @@ func writeServiceError(ctx context.Context, w http.ResponseWriter, err error) {
 		response.WriteError(w, http.StatusBadRequest, response.ErrMsgInvalidAmount)
 	case errors.Is(err, ErrInsufficientFunds):
 		response.WriteError(w, http.StatusBadRequest, response.ErrMsgInsufficientFunds)
+	case errors.Is(err, ErrInvalidName):
+		response.WriteError(w, http.StatusBadRequest, response.ErrMsgInvalidName)
+	case errors.Is(err, ErrNameNotAllowed):
+		response.WriteError(w, http.StatusBadRequest, response.ErrMsgNameNotAllowed)
+	case errors.Is(err, ErrInvalidGrant):
+		response.WriteError(w, http.StatusBadRequest, response.ErrMsgInvalidGrant)
+	case errors.Is(err, ErrDomainNotAllowed):
+		response.WriteError(w, http.StatusBadRequest, response.ErrMsgDomainNotAllowed)
 	default:
 		slog.ErrorContext(ctx, "request failed", "err", err)
 		response.WriteError(w, http.StatusInternalServerError, response.ErrMsgInternal)

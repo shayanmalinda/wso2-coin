@@ -30,6 +30,26 @@ type WalletRow struct {
 	DefaultWallet bool
 	CreatedOn     time.Time
 	Balance       sql.NullString
+	// Name is the encrypted display name, when one has been set.
+	Name sql.NullString
+	// GrantCount is the number of people other than the owner with access.
+	GrantCount int
+}
+
+// GrantRow is one person's access to a wallet they do not own.
+type GrantRow struct {
+	Address   string
+	Email     string
+	Level     string
+	Seal      string
+	GrantedBy string
+	CreatedOn time.Time
+}
+
+// SharedWalletRow is a wallet the caller can use through a grant.
+type SharedWalletRow struct {
+	Wallet WalletRow
+	Grant  GrantRow
 }
 
 // TxnRow is a persisted transaction as read from storage.
@@ -42,6 +62,8 @@ type TxnRow struct {
 	LogIndex    sql.NullInt64
 	BlockTime   sql.NullTime
 	CreatedOn   time.Time
+	// InitiatedBy is the encrypted email of the user who made the transfer.
+	InitiatedBy sql.NullString
 }
 
 // TxnInsert is a new transaction to persist.
@@ -52,6 +74,8 @@ type TxnInsert struct {
 	Reference   string
 	// Source labels the originating channel/app for the transaction.
 	Source string
+	// InitiatedBy is the encrypted email of the user who made the transfer.
+	InitiatedBy string
 }
 
 // Queries is the set of reads and writes available inside a database transaction.
@@ -69,6 +93,12 @@ type Repository interface {
 	WalletByAddress(ctx context.Context, address string) (*WalletRow, error)
 	SetPrimary(ctx context.Context, email, address string) error
 	Transactions(ctx context.Context, address string, limit, offset int, direction string) ([]TxnRow, error)
+	SetWalletName(ctx context.Context, address string, encName sql.NullString) error
+	SharedWalletsByEmail(ctx context.Context, email string) ([]SharedWalletRow, error)
+	Grant(ctx context.Context, address, email string) (*GrantRow, error)
+	Grants(ctx context.Context, address string) ([]GrantRow, error)
+	UpsertGrant(ctx context.Context, g GrantRow) error
+	DeleteGrant(ctx context.Context, address, email string) (bool, error)
 	Tx(ctx context.Context, fn func(Queries) error) error
 }
 
@@ -82,9 +112,10 @@ func NewRepository(db *sql.DB) Repository {
 }
 
 func (r *mysqlRepository) WalletsByEmail(ctx context.Context, email string) ([]WalletRow, error) {
-	const q = `SELECT wallet_address, default_wallet, created_on
-		FROM user_wallet WHERE user_email = ?
-		ORDER BY default_wallet DESC, created_on DESC`
+	const q = `SELECT w.wallet_address, w.default_wallet, w.created_on, w.wallet_name,
+			(SELECT COUNT(*) FROM wallet_access a WHERE a.wallet_address = w.wallet_address)
+		FROM user_wallet w WHERE w.user_email = ?
+		ORDER BY w.default_wallet DESC, w.created_on DESC`
 	rows, err := r.db.QueryContext(ctx, q, email)
 	if err != nil {
 		return nil, fmt.Errorf("query wallets: %w", err)
@@ -94,7 +125,7 @@ func (r *mysqlRepository) WalletsByEmail(ctx context.Context, email string) ([]W
 	var wallets []WalletRow
 	for rows.Next() {
 		var wr WalletRow
-		if err := rows.Scan(&wr.Address, &wr.DefaultWallet, &wr.CreatedOn); err != nil {
+		if err := rows.Scan(&wr.Address, &wr.DefaultWallet, &wr.CreatedOn, &wr.Name, &wr.GrantCount); err != nil {
 			return nil, fmt.Errorf("scan wallet: %w", err)
 		}
 		wr.Email = email
@@ -104,11 +135,12 @@ func (r *mysqlRepository) WalletsByEmail(ctx context.Context, email string) ([]W
 }
 
 func (r *mysqlRepository) WalletByAddress(ctx context.Context, address string) (*WalletRow, error) {
-	const q = `SELECT wallet_address, user_email, default_wallet, created_on, total_balance
-		FROM user_wallet WHERE wallet_address = ?`
+	const q = `SELECT w.wallet_address, w.user_email, w.default_wallet, w.created_on, w.total_balance, w.wallet_name,
+			(SELECT COUNT(*) FROM wallet_access a WHERE a.wallet_address = w.wallet_address)
+		FROM user_wallet w WHERE w.wallet_address = ?`
 	var wr WalletRow
 	err := r.db.QueryRowContext(ctx, q, address).
-		Scan(&wr.Address, &wr.Email, &wr.DefaultWallet, &wr.CreatedOn, &wr.Balance)
+		Scan(&wr.Address, &wr.Email, &wr.DefaultWallet, &wr.CreatedOn, &wr.Balance, &wr.Name, &wr.GrantCount)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -135,7 +167,7 @@ func (r *mysqlRepository) Transactions(ctx context.Context, address string, limi
 	case "received":
 		where, args = "to_address = ?", []any{address}
 	}
-	q := fmt.Sprintf(`SELECT tx_hash, reference, from_address, to_address, amount, tx_log_index, tx_block_timestamp, created_on
+	q := fmt.Sprintf(`SELECT tx_hash, reference, from_address, to_address, amount, tx_log_index, tx_block_timestamp, created_on, initiated_by
 		FROM `+"`transaction`"+` WHERE %s
 		ORDER BY COALESCE(tx_block_timestamp, created_on) DESC, id DESC
 		LIMIT ? OFFSET ?`, where)
@@ -150,12 +182,105 @@ func (r *mysqlRepository) Transactions(ctx context.Context, address string, limi
 	var txns []TxnRow
 	for rows.Next() {
 		var t TxnRow
-		if err := rows.Scan(&t.Hash, &t.Reference, &t.FromAddress, &t.ToAddress, &t.Amount, &t.LogIndex, &t.BlockTime, &t.CreatedOn); err != nil {
+		if err := rows.Scan(&t.Hash, &t.Reference, &t.FromAddress, &t.ToAddress, &t.Amount, &t.LogIndex, &t.BlockTime, &t.CreatedOn, &t.InitiatedBy); err != nil {
 			return nil, fmt.Errorf("scan transaction: %w", err)
 		}
 		txns = append(txns, t)
 	}
 	return txns, rows.Err()
+}
+
+func (r *mysqlRepository) SetWalletName(ctx context.Context, address string, encName sql.NullString) error {
+	const q = `UPDATE user_wallet SET wallet_name = ? WHERE wallet_address = ?`
+	if _, err := r.db.ExecContext(ctx, q, encName, address); err != nil {
+		return fmt.Errorf("set wallet name: %w", err)
+	}
+	return nil
+}
+
+func (r *mysqlRepository) SharedWalletsByEmail(ctx context.Context, email string) ([]SharedWalletRow, error) {
+	const q = `SELECT w.wallet_address, w.user_email, w.created_on, w.wallet_name,
+			a.user_email, a.access_level, a.seal, a.granted_by, a.created_on
+		FROM wallet_access a JOIN user_wallet w ON w.wallet_address = a.wallet_address
+		WHERE a.user_email = ?
+		ORDER BY a.created_on DESC`
+	rows, err := r.db.QueryContext(ctx, q, email)
+	if err != nil {
+		return nil, fmt.Errorf("query shared wallets: %w", err)
+	}
+	defer rows.Close()
+
+	var shared []SharedWalletRow
+	for rows.Next() {
+		var sr SharedWalletRow
+		if err := rows.Scan(&sr.Wallet.Address, &sr.Wallet.Email, &sr.Wallet.CreatedOn, &sr.Wallet.Name,
+			&sr.Grant.Email, &sr.Grant.Level, &sr.Grant.Seal, &sr.Grant.GrantedBy, &sr.Grant.CreatedOn); err != nil {
+			return nil, fmt.Errorf("scan shared wallet: %w", err)
+		}
+		sr.Grant.Address = sr.Wallet.Address
+		// A row here is itself a grant, so the wallet is shared with at least one person.
+		sr.Wallet.GrantCount = 1
+		shared = append(shared, sr)
+	}
+	return shared, rows.Err()
+}
+
+func (r *mysqlRepository) Grant(ctx context.Context, address, email string) (*GrantRow, error) {
+	const q = `SELECT wallet_address, user_email, access_level, seal, granted_by, created_on
+		FROM wallet_access WHERE wallet_address = ? AND user_email = ?`
+	var g GrantRow
+	err := r.db.QueryRowContext(ctx, q, address, email).
+		Scan(&g.Address, &g.Email, &g.Level, &g.Seal, &g.GrantedBy, &g.CreatedOn)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("query grant: %w", err)
+	}
+	return &g, nil
+}
+
+func (r *mysqlRepository) Grants(ctx context.Context, address string) ([]GrantRow, error) {
+	const q = `SELECT wallet_address, user_email, access_level, seal, granted_by, created_on
+		FROM wallet_access WHERE wallet_address = ? ORDER BY user_email`
+	rows, err := r.db.QueryContext(ctx, q, address)
+	if err != nil {
+		return nil, fmt.Errorf("query grants: %w", err)
+	}
+	defer rows.Close()
+
+	var grants []GrantRow
+	for rows.Next() {
+		var g GrantRow
+		if err := rows.Scan(&g.Address, &g.Email, &g.Level, &g.Seal, &g.GrantedBy, &g.CreatedOn); err != nil {
+			return nil, fmt.Errorf("scan grant: %w", err)
+		}
+		grants = append(grants, g)
+	}
+	return grants, rows.Err()
+}
+
+func (r *mysqlRepository) UpsertGrant(ctx context.Context, g GrantRow) error {
+	const q = `INSERT INTO wallet_access (wallet_address, user_email, access_level, seal, granted_by)
+		VALUES (?, ?, ?, ?, ?)
+		ON DUPLICATE KEY UPDATE access_level = VALUES(access_level), seal = VALUES(seal), granted_by = VALUES(granted_by)`
+	if _, err := r.db.ExecContext(ctx, q, g.Address, g.Email, g.Level, g.Seal, g.GrantedBy); err != nil {
+		return fmt.Errorf("upsert grant: %w", err)
+	}
+	return nil
+}
+
+func (r *mysqlRepository) DeleteGrant(ctx context.Context, address, email string) (bool, error) {
+	res, err := r.db.ExecContext(ctx,
+		"DELETE FROM wallet_access WHERE wallet_address = ? AND user_email = ?", address, email)
+	if err != nil {
+		return false, fmt.Errorf("delete grant: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("delete grant: %w", err)
+	}
+	return n > 0, nil
 }
 
 func (r *mysqlRepository) Tx(ctx context.Context, fn func(Queries) error) error {
@@ -222,8 +347,9 @@ func (q *txQueries) InsertWallet(ctx context.Context, address, email, encBalance
 }
 
 func (q *txQueries) InsertTransaction(ctx context.Context, t TxnInsert) error {
-	const stmt = "INSERT INTO `transaction` (from_address, to_address, amount, reference, source) VALUES (?, ?, ?, ?, ?)"
-	if _, err := q.tx.ExecContext(ctx, stmt, t.FromAddress, t.ToAddress, t.Amount, t.Reference, t.Source); err != nil {
+	const stmt = "INSERT INTO `transaction` (from_address, to_address, amount, reference, source, initiated_by) VALUES (?, ?, ?, ?, ?, ?)"
+	initiatedBy := sql.NullString{String: t.InitiatedBy, Valid: t.InitiatedBy != ""}
+	if _, err := q.tx.ExecContext(ctx, stmt, t.FromAddress, t.ToAddress, t.Amount, t.Reference, t.Source, initiatedBy); err != nil {
 		return fmt.Errorf("insert transaction: %w", err)
 	}
 	return nil

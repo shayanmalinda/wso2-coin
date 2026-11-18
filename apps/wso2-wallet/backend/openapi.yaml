@@ -17,7 +17,7 @@ paths:
           description: Service is up
   /api/v1/wallets:
     get:
-      summary: List the caller's wallets
+      summary: List the wallets the caller owns, followed by the wallets shared with them
       responses:
         "200":
           description: Wallets
@@ -104,9 +104,108 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WalletHealth"
+  /api/v1/wallets/{address}/info:
+    get:
+      summary: What anyone may know about a wallet before sending to it
+      parameters:
+        - $ref: "#/components/parameters/Address"
+      responses:
+        "200":
+          description: Wallet info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WalletInfo"
+        "404":
+          $ref: "#/components/responses/Error"
+  /api/v1/wallets/{address}/name:
+    post:
+      summary: Set or clear the wallet name (owner only; the wallet must be shared)
+      parameters:
+        - $ref: "#/components/parameters/Address"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RenameRequest"
+      responses:
+        "204":
+          description: Name updated
+        "400":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+  /api/v1/wallets/{address}/access:
+    get:
+      summary: List the people the wallet is shared with (owner only)
+      parameters:
+        - $ref: "#/components/parameters/Address"
+      responses:
+        "200":
+          description: Access grants
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AccessGrant"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+    post:
+      summary: Give a person access, or change their access level (owner only)
+      parameters:
+        - $ref: "#/components/parameters/Address"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccessRequest"
+      responses:
+        "204":
+          description: Access granted
+        "400":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+  /api/v1/wallets/{address}/access/revoke:
+    post:
+      summary: Remove a person's access (owner only)
+      parameters:
+        - $ref: "#/components/parameters/Address"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RevokeRequest"
+      responses:
+        "204":
+          description: Access removed
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+  /api/v1/wallets/{address}/access/leave:
+    post:
+      summary: Give up the caller's own access to a wallet shared with them
+      parameters:
+        - $ref: "#/components/parameters/Address"
+      responses:
+        "204":
+          description: Access removed
+        "404":
+          $ref: "#/components/responses/Error"
   /api/v1/transfers:
     post:
-      summary: Transfer coins between two wallets
+      summary: Transfer coins from a wallet the caller owns or has TRANSACT access to
       requestBody:
         required: true
         content:
@@ -172,6 +271,59 @@ components:
           type: boolean
         createdOn:
           type: string
+        name:
+          type: string
+          description: Present only while the wallet is shared with at least one other person.
+        role:
+          $ref: "#/components/schemas/Role"
+        shared:
+          type: boolean
+          description: Whether anyone other than the owner has access.
+    Role:
+      type: string
+      enum: [OWNER, TRANSACT, READ]
+    WalletInfo:
+      type: object
+      properties:
+        address:
+          type: string
+        name:
+          type: string
+    RenameRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          maxLength: 50
+          description: An empty name clears it.
+    AccessGrant:
+      type: object
+      properties:
+        email:
+          type: string
+        accessLevel:
+          type: string
+          enum: [TRANSACT, READ]
+        grantedBy:
+          type: string
+        grantedOn:
+          type: string
+    AccessRequest:
+      type: object
+      required: [email, accessLevel]
+      properties:
+        email:
+          type: string
+        accessLevel:
+          type: string
+          enum: [TRANSACT, READ]
+    RevokeRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
     Balance:
       type: object
       properties:
@@ -195,6 +347,9 @@ components:
           enum: [sent, received]
         timestamp:
           type: string
+        initiatedBy:
+          type: string
+          description: Who made the transfer. Present only on transfers sent from the wallet.
     TransactionPage:
       type: object
       properties:

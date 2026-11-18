@@ -40,6 +40,11 @@ const (
 	ErrMsgSelfTransfer      = "Cannot transfer to the same wallet."
 	ErrMsgInvalidAmount     = "Invalid transfer amount."
 	ErrMsgInsufficientFunds = "Insufficient funds."
+
+	ErrMsgInvalidName      = "Wallet name must be 50 characters or fewer."
+	ErrMsgNameNotAllowed   = "Share the wallet with at least one person before naming it."
+	ErrMsgInvalidGrant     = "Invalid email or access level."
+	ErrMsgDomainNotAllowed = "Wallets can only be shared between people in the organization."
 )
 
 type errorBody struct {

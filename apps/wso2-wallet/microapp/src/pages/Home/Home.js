@@ -37,6 +37,7 @@ import {
   ERROR_RETRIEVE_WALLET_ADDRESS,
   ERROR_BRIDGE_NOT_READY,
   SEND,
+  READ_ONLY_SEND_INFO,
   REQUEST,
   TOTAL_BALANCE,
   WSO2_TOKEN,
@@ -49,13 +50,15 @@ import { showAlertBox } from '../../helpers/alerts';
 import { getLocalDataAsync, saveLocalDataAsync } from '../../helpers/storage';
 import { waitForBridge } from '../../helpers/bridge';
 import { useWalletBalance } from '../../services/query-hooks';
-import { getUserWalletAddresses } from '../../services/wallet.service';
+import { getUserWalletAddresses, WALLET_ROLE } from '../../services/wallet.service';
 import { formatBalance } from '../../utils/transactionUtils';
 
 function Home() {
   const navigate = useNavigate();
   const [walletAddress, setWalletAddress] = useState(DEFAULT_WALLET_ADDRESS);
   const [isResolvingWallet, setIsResolvingWallet] = useState(true);
+  // The active wallet as the backend describes it: its name and what the user may do.
+  const [activeWallet, setActiveWallet] = useState(null);
   const recentActivitiesRef = useRef();
 
   const [messageApi, contextHolder] = message.useMessage();
@@ -88,6 +91,7 @@ function Home() {
         wallets.find((w) => w.defaultWallet) ||
         wallets[0];
       await saveLocalDataAsync(STORAGE_KEYS.WALLET_ADDRESS, active.walletAddress);
+      setActiveWallet(active);
       if (active.walletAddress !== walletAddress) {
         setWalletAddress(active.walletAddress);
       }
@@ -127,6 +131,8 @@ function Home() {
     navigate("/receive");
   };
 
+  const isReadOnly = activeWallet?.role === WALLET_ROLE.READ;
+
   if (isResolvingWallet) {
     return (
       <div className="home-loading-overlay">
@@ -145,7 +151,7 @@ function Home() {
 
       <div className="wallet-hero">
         <div className="wallet-hero-label">Connected Wallet</div>
-        <div className="wallet-hero-name">{WSO2_WALLET}</div>
+        <div className="wallet-hero-name">{activeWallet?.name || WSO2_WALLET}</div>
         <div className="wallet-hero-badge-row">
           <span className={`hero-badge ${hasValidAddress ? 'is-connected' : 'is-connecting'}`}>
             <span className="hero-badge-dot" />
@@ -181,6 +187,7 @@ function Home() {
         <button
           className="home-action-btn home-action-btn-primary"
           onClick={handleSend}
+          disabled={isReadOnly}
         >
           <SendOutlined style={{ fontSize: 16 }} />
           <span>{SEND}</span>
@@ -193,6 +200,10 @@ function Home() {
           <span>{REQUEST}</span>
         </button>
       </div>
+
+      {isReadOnly && (
+        <div className="home-read-only-note">{READ_ONLY_SEND_INFO}</div>
+      )}
 
       <RecentActivities
         ref={recentActivitiesRef}
