@@ -502,7 +502,7 @@ function Profile() {
             onClick={() => setIsQrModalOpen(true)}
           >
             <span className="profile-btn-icon neutral">
-              <QrcodeOutlined style={{ fontSize: 18, color: '#1C1917' }} />
+              <QrcodeOutlined style={{ fontSize: 18, color: '#0B1633' }} />
             </span>
             <span className="profile-btn-text">
               <span className="profile-btn-label">{SHOW_WALLET_ADDRESS}</span>
@@ -519,9 +519,9 @@ function Profile() {
           >
             <span className="profile-btn-icon neutral">
               {isCreating ? (
-                <LoadingOutlined style={{ fontSize: 18, color: '#1C1917' }} spin />
+                <LoadingOutlined style={{ fontSize: 18, color: '#0B1633' }} spin />
               ) : (
-                <PlusOutlined style={{ fontSize: 18, color: '#1C1917' }} />
+                <PlusOutlined style={{ fontSize: 18, color: '#0B1633' }} />
               )}
             </span>
             <span className="profile-btn-text">
@@ -572,12 +572,12 @@ function Profile() {
                 <span className="profile-btn-icon neutral">
                   {isLoadingWallets ? (
                     <LoadingOutlined
-                      style={{ fontSize: 18, color: '#1C1917' }}
+                      style={{ fontSize: 18, color: '#0B1633' }}
                       spin
                     />
                   ) : (
                     <WalletOutlined
-                      style={{ fontSize: 18, color: '#1C1917' }}
+                      style={{ fontSize: 18, color: '#0B1633' }}
                     />
                   )}
                 </span>

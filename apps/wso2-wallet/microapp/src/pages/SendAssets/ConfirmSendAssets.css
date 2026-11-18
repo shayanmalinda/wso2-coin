@@ -31,7 +31,7 @@
 
 .confirm-hero-label {
   font-size: 11px;
-  color: #9CA3AF;
+  color: #8A90A0;
   font-weight: 600;
   margin-bottom: 12px;
   letter-spacing: 1.2px;
@@ -41,7 +41,7 @@
 .confirm-hero-amount {
   font-size: 56px;
   font-weight: 700;
-  color: #1C1917;
+  color: #0B1633;
   letter-spacing: -2.4px;
   line-height: 1;
   margin-bottom: 14px;
@@ -52,8 +52,8 @@
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  background: #FFF7ED;
-  border: 1px solid rgba(249, 115, 22, 0.22);
+  background: #F4F6FA;
+  border: 1px solid #D9DEE8;
   border-radius: 999px;
   padding: 6px 14px 6px 8px;
 }
@@ -61,7 +61,7 @@
 .confirm-hero-chip-text {
   font-size: 14px;
   font-weight: 700;
-  color: var(--orange-primary, #ff7300);
+  color: #C43300;
   letter-spacing: 0.4px;
 }
 
@@ -69,7 +69,7 @@
 .confirm-card {
   margin: 0 24px 14px;
   background: #ffffff;
-  border: 1.5px solid #E5E0D8;
+  border: 1.5px solid #D9DEE8;
   border-radius: 20px;
   overflow: hidden;
 }
@@ -93,7 +93,7 @@
 
 .confirm-addr-lbl {
   font-size: 11px;
-  color: #78716C;
+  color: #5A6072;
   font-weight: 600;
   letter-spacing: 0.8px;
   text-transform: uppercase;
@@ -103,7 +103,7 @@
 .confirm-addr-val {
   font-family: 'JetBrains Mono', 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
   font-size: 12px;
-  color: #374151;
+  color: #0B1633;
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
@@ -114,7 +114,7 @@
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: #F0EDE8;
+  background: #E6E9F0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -126,14 +126,14 @@
   align-items: center;
   justify-content: space-between;
   padding: 14px 20px;
-  border-top: 1px solid #F0EDE8;
+  border-top: 1px solid #E6E9F0;
   gap: 10px;
 }
 
 .confirm-total-lbl {
   font-size: 14px;
   font-weight: 700;
-  color: #1C1917;
+  color: #0B1633;
 }
 
 .confirm-total-val {
@@ -145,7 +145,7 @@
 .confirm-total-num {
   font-size: 16px;
   font-weight: 700;
-  color: #1C1917;
+  color: #0B1633;
   letter-spacing: -0.5px;
   word-break: break-all;
 }
@@ -154,8 +154,8 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  background: #FFF7ED;
-  border: 1px solid rgba(249, 115, 22, 0.2);
+  background: #F4F6FA;
+  border: 1px solid #D9DEE8;
   border-radius: 20px;
   padding: 4px 10px;
   flex-shrink: 0;
@@ -164,7 +164,7 @@
 .confirm-ticker-text {
   font-size: 12px;
   font-weight: 700;
-  color: var(--orange-primary, #ff7300);
+  color: #C43300;
   letter-spacing: 0.3px;
 }
 
@@ -174,15 +174,15 @@
   align-items: flex-start;
   gap: 10px;
   margin: 0 24px 18px;
-  background: #FFF7ED;
-  border: 1px solid rgba(249, 115, 22, 0.22);
+  background: #F4F6FA;
+  border: 1px solid #D9DEE8;
   border-radius: 14px;
   padding: 12px 14px;
 }
 
 .confirm-warn-text {
   font-size: 12px;
-  color: #92400E;
+  color: #C43300;
   font-weight: 500;
   line-height: 1.5;
   text-align: left;
@@ -197,14 +197,14 @@
 
 .confirm-cancel-btn {
   flex: 1;
-  height: 54px;
+  height: 48px;
   background: #ffffff;
-  border: 1.5px solid #E5E0D8;
+  border: 1.5px solid #D9DEE8;
   border-radius: 18px;
   font-family: inherit;
   font-size: 15px;
   font-weight: 600;
-  color: #1C1917;
+  color: #0B1633;
   cursor: pointer;
   transition: all 0.15s ease;
   -webkit-tap-highlight-color: transparent;
@@ -215,7 +215,7 @@
 }
 
 .confirm-cancel-btn:active:not(:disabled) {
-  background: #F0EDE8;
+  background: #E6E9F0;
   transform: scale(0.98);
 }
 
@@ -226,14 +226,14 @@
 
 .confirm-primary-btn {
   flex: 1.6;
-  height: 54px;
-  background: var(--orange-primary, #ff7300);
+  height: 48px;
+  background: var(--orange-primary, #FF4600);
   border: none;
   border-radius: 18px;
   font-family: inherit;
   font-size: 15px;
   font-weight: 700;
-  color: #ffffff;
+  color: #0B1633;
   cursor: pointer;
   transition: all 0.15s ease;
   display: flex;
@@ -241,7 +241,7 @@
   justify-content: center;
   gap: 8px;
   letter-spacing: -0.2px;
-  box-shadow: 0 8px 20px rgba(249, 115, 22, 0.28);
+  box-shadow: 0 4px 12px rgba(11, 22, 51, 0.12);
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -254,8 +254,8 @@
 }
 
 .confirm-primary-btn:disabled {
-  background: #E5E0D8;
-  color: #78716C;
+  background: #D9DEE8;
+  color: #5A6072;
   box-shadow: none;
   cursor: not-allowed;
 }
@@ -268,6 +268,6 @@
 .confirm-addr-name {
   font-size: 13px;
   font-weight: 700;
-  color: #1C1917;
+  color: #0B1633;
   overflow-wrap: anywhere;
 }

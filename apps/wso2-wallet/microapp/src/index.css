@@ -37,7 +37,7 @@
 
 body {
   margin: 0;
-  background: #FAFAF9;
+  background: #F4F6FA;
   font-family: 'Sora', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto',
     'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans',
     'Helvetica Neue', sans-serif;
@@ -53,6 +53,6 @@ code {
 /* Always show a visible focus indicator for keyboard users, even where a
    component clears the default outline for mouse focus. */
 :focus-visible {
-  outline: 2px solid var(--orange-primary, #ff7300) !important;
+  outline: 2px solid var(--orange-primary, #FF4600) !important;
   outline-offset: 2px;
 }

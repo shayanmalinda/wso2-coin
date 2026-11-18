@@ -42,7 +42,7 @@ export const MaintenanceBanner = () => {
         aria-labelledby="maintenance-title"
       >
         <div className="maintenance-icon-wrapper">
-          <AlertTriangle color="#ff7300" size={36} />
+          <AlertTriangle color="#FF4600" size={36} />
         </div>
         <h2 id="maintenance-title" className="maintenance-title">
           Under Maintenance

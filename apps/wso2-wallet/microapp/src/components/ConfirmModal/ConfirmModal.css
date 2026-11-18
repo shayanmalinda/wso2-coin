@@ -22,7 +22,7 @@
 
 .confirm-modal-text {
   font-size: 13px;
-  color: #78716C;
+  color: #5A6072;
   line-height: 1.5;
   text-align: left;
   margin-bottom: 18px;
@@ -35,14 +35,14 @@
 
 .confirm-modal-cancel {
   flex: 1;
-  height: 48px;
+  height: 44px;
   background: #ffffff;
-  border: 1.5px solid #E5E0D8;
+  border: 1.5px solid #D9DEE8;
   border-radius: 14px;
   font-family: inherit;
   font-size: 14px;
   font-weight: 600;
-  color: #1C1917;
+  color: #0B1633;
   cursor: pointer;
   transition: all 0.15s ease;
   -webkit-tap-highlight-color: transparent;
@@ -53,7 +53,7 @@
 }
 
 .confirm-modal-cancel:active:not(:disabled) {
-  background: #F0EDE8;
+  background: #E6E9F0;
   transform: scale(0.98);
 }
 
@@ -64,14 +64,14 @@
 
 .confirm-modal-confirm {
   flex: 1.4;
-  height: 48px;
-  background: var(--orange-primary, #ff7300);
+  height: 44px;
+  background: var(--orange-primary, #FF4600);
   border: none;
   border-radius: 14px;
   font-family: inherit;
   font-size: 14px;
   font-weight: 700;
-  color: #ffffff;
+  color: #0B1633;
   cursor: pointer;
   transition: all 0.15s ease;
   display: flex;
@@ -79,7 +79,7 @@
   justify-content: center;
   gap: 8px;
   letter-spacing: -0.2px;
-  box-shadow: 0 8px 20px rgba(249, 115, 22, 0.25);
+  box-shadow: 0 4px 12px rgba(11, 22, 51, 0.12);
   -webkit-tap-highlight-color: transparent;
 }
 

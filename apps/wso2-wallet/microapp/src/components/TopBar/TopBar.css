@@ -26,8 +26,8 @@
   gap: 14px;
   padding: var(--safe-area-top, 0px) 20px 0;
   height: calc(var(--topbar-height, 44px) + var(--safe-area-top, 0px));
-  background: #FAFAF9;
-  border-bottom: 1px solid #F0EDE8;
+  background: #F4F6FA;
+  border-bottom: 1px solid #E6E9F0;
   z-index: 1100;
 }
 
@@ -35,12 +35,12 @@
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: #F0EDE8;
+  background: #E6E9F0;
   border: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #1C1917;
+  color: #0B1633;
   cursor: pointer;
   flex-shrink: 0;
   transition: all 0.15s ease;
@@ -53,13 +53,13 @@
 
 .topbar-back-btn:active {
   transform: scale(0.93);
-  background: #E5E0D8;
+  background: #D9DEE8;
 }
 
 .topbar-title {
   font-size: 22px;
   font-weight: 700;
-  color: #1C1917;
+  color: #0B1633;
   letter-spacing: -0.6px;
   margin: 0;
   line-height: 1.2;
@@ -93,7 +93,7 @@
 .topbar-leave-title {
   font-size: 18px;
   font-weight: 700;
-  color: #1C1917;
+  color: #0B1633;
   letter-spacing: -0.4px;
   margin: 0 0 8px;
   text-align: center;
@@ -101,7 +101,7 @@
 
 .topbar-leave-text {
   font-size: 14px;
-  color: #78716C;
+  color: #5A6072;
   line-height: 1.5;
   margin: 0 0 20px;
   text-align: center;
@@ -114,14 +114,14 @@
 
 .topbar-leave-cancel {
   flex: 1;
-  height: 48px;
+  height: 44px;
   background: #ffffff;
-  border: 1.5px solid #E5E0D8;
+  border: 1.5px solid #D9DEE8;
   border-radius: 14px;
   font-family: inherit;
   font-size: 14px;
   font-weight: 600;
-  color: #1C1917;
+  color: #0B1633;
   cursor: pointer;
   transition: all 0.15s ease;
   -webkit-tap-highlight-color: transparent;
@@ -132,24 +132,24 @@
 }
 
 .topbar-leave-cancel:active {
-  background: #F0EDE8;
+  background: #E6E9F0;
   transform: scale(0.98);
 }
 
 .topbar-leave-confirm {
   flex: 1;
-  height: 48px;
-  background: var(--orange-primary, #ff7300);
+  height: 44px;
+  background: var(--orange-primary, #FF4600);
   border: none;
   border-radius: 14px;
   font-family: inherit;
   font-size: 14px;
   font-weight: 700;
-  color: #ffffff;
+  color: #0B1633;
   letter-spacing: -0.2px;
   cursor: pointer;
   transition: all 0.15s ease;
-  box-shadow: 0 8px 20px rgba(249, 115, 22, 0.28);
+  box-shadow: 0 4px 12px rgba(11, 22, 51, 0.12);
   -webkit-tap-highlight-color: transparent;
 }
 

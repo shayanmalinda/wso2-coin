@@ -15,9 +15,9 @@
 // under the License.
 
 export const COLORS = {
-  ORANGE_PRIMARY: "#ff7300",
-  GRAY_DARK: "#333",
-  GRAY_MEDIUM: "#8c8c8c",
-  GRAY_LIGHT: "#888",
+  ORANGE_PRIMARY: "#FF4600",
+  GRAY_DARK: "#0B1633",
+  GRAY_MEDIUM: "#8A90A0",
+  GRAY_LIGHT: "#5A6072",
   WHITE: "#fff"
 };

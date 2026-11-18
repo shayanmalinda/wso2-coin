@@ -30,20 +30,20 @@
 
 @media (prefers-color-scheme: dark) {
   .maintenance-card {
-    background-color: #1F2A44;
+    background-color: #0B1633;
   }
   .maintenance-title {
     color: #ffffff !important;
   }
   .maintenance-text {
-    color: #d1d5db !important;
+    color: #D9DEE8 !important;
   }
 }
 
 .maintenance-icon-wrapper {
   width: 4rem;
   height: 4rem;
-  background-color: rgba(255, 115, 0, 0.1);
+  background-color: #F4F6FA;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -55,13 +55,13 @@
   font-size: 1.5rem;
   line-height: 2rem;
   font-weight: 700;
-  color: #1F2A44;
+  color: #0B1633;
   margin-bottom: 1rem;
   margin-top: 1rem;
 }
 
 .maintenance-text {
-  color: #808080;
+  color: #5A6072;
   margin-bottom: 1.5rem;
 }
 
@@ -72,8 +72,8 @@
   padding-bottom: 0.75rem;
   padding-left: 1rem;
   padding-right: 1rem;
-  background-color: #ff7300; /* Primary color fallback */
-  color: #ffffff;
+  background-color: #FF4600; /* Primary color fallback */
+  color: #0B1633;
   font-weight: 600;
   border-radius: 0.75rem;
   border: none;

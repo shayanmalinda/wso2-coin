@@ -273,7 +273,7 @@ function ConfirmSendAssets() {
             </div>
           </div>
           <div className="confirm-arrow-sep">
-            <ArrowRightOutlined style={{ fontSize: 12, color: "#9CA3AF" }} />
+            <ArrowRightOutlined style={{ fontSize: 12, color: "#8A90A0" }} />
           </div>
           <div className="confirm-addr-blk confirm-addr-blk-right">
             <div className="confirm-addr-lbl">To</div>
@@ -299,7 +299,7 @@ function ConfirmSendAssets() {
       </div>
 
       <div className="confirm-warn">
-        <WarningFilled style={{ color: "#F97316", fontSize: 16, flexShrink: 0 }} />
+        <WarningFilled style={{ color: "#FF4600", fontSize: 16, flexShrink: 0 }} />
         <span className="confirm-warn-text">
           Crypto transactions are irreversible. Double-check the recipient
           address before confirming.

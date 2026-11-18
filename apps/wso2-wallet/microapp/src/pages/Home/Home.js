@@ -171,7 +171,7 @@ function Home() {
       <div className="home-loading-overlay">
         {contextHolder}
         <LoadingOutlined
-          style={{ fontSize: 28, color: 'var(--orange-primary, #ff7300)' }}
+          style={{ fontSize: 28, color: 'var(--orange-primary, #FF4600)' }}
           spin
         />
       </div>

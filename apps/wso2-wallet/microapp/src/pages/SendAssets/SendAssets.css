@@ -28,8 +28,8 @@
   justify-content: center;
   gap: 10px;
   margin: 16px 24px 0;
-  height: 52px;
-  background: #1C1917;
+  height: 48px;
+  background: #0B1633;
   border: none;
   border-radius: 18px;
   font-family: inherit;
@@ -49,7 +49,7 @@
 
 .send-scan-btn:active {
   transform: scale(0.98);
-  background: #292524;
+  background: #0B1633;
 }
 
 .send-scan-btn:disabled {
@@ -67,12 +67,12 @@
 .send-divider-line {
   flex: 1;
   height: 1px;
-  background: #E5E0D8;
+  background: #D9DEE8;
 }
 
 .send-divider-text {
   font-size: 12px;
-  color: #78716C;
+  color: #5A6072;
   font-weight: 500;
   white-space: nowrap;
 }
@@ -84,7 +84,7 @@
 .send-field-label {
   font-size: 11px;
   font-weight: 600;
-  color: #78716C;
+  color: #5A6072;
   letter-spacing: 0.8px;
   text-transform: uppercase;
   margin-bottom: 8px;
@@ -96,14 +96,14 @@
   display: flex;
   align-items: center;
   background: #ffffff;
-  border: 1.5px solid #E5E0D8;
+  border: 1.5px solid #D9DEE8;
   border-radius: 16px;
   transition: all 0.15s ease;
 }
 
 .send-address-wrap:focus-within {
-  border-color: var(--orange-primary, #ff7300);
-  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.08);
+  border-color: var(--orange-primary, #FF4600);
+  box-shadow: none;
 }
 
 .send-address-wrap.is-error {
@@ -119,26 +119,26 @@
   left: 14px;
   top: 50%;
   transform: translateY(-50%);
-  color: #9CA3AF;
+  color: #8A90A0;
   font-size: 16px;
   pointer-events: none;
 }
 
 .send-address-input {
   width: 100%;
-  height: 50px;
+  height: 48px;
   padding: 0 16px 0 42px;
   background: transparent;
   border: none;
   border-radius: 16px;
   font-family: 'JetBrains Mono', 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
   font-size: 13px;
-  color: #1C1917;
+  color: #0B1633;
   outline: none;
 }
 
 .send-address-input::placeholder {
-  color: #9CA3AF;
+  color: #8A90A0;
   font-family: inherit;
   font-size: 14px;
 }
@@ -148,7 +148,7 @@
   align-items: center;
   gap: 14px;
   background: #ffffff;
-  border: 1.5px solid #E5E0D8;
+  border: 1.5px solid #D9DEE8;
   border-radius: 16px;
   padding: 13px 16px;
 }
@@ -157,7 +157,7 @@
   width: 42px;
   height: 42px;
   border-radius: 13px;
-  background: #FFF7ED;
+  background: #F4F6FA;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -173,13 +173,13 @@
 .send-balance-name {
   font-size: 15px;
   font-weight: 700;
-  color: #1C1917;
+  color: #0B1633;
   letter-spacing: -0.3px;
 }
 
 .send-balance-amount {
   font-size: 12px;
-  color: #9CA3AF;
+  color: #8A90A0;
   margin-top: 2px;
   font-family: 'JetBrains Mono', 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
   display: flex;
@@ -191,9 +191,9 @@
   font-family: inherit;
   font-size: 11px;
   font-weight: 600;
-  color: var(--orange-primary, #ff7300);
-  background: rgba(249, 115, 22, 0.08);
-  border: 1px solid rgba(249, 115, 22, 0.18);
+  color: #C43300;
+  background: #F4F6FA;
+  border: 1px solid #D9DEE8;
   border-radius: 8px;
   padding: 2px 8px;
   cursor: pointer;
@@ -205,14 +205,14 @@
 }
 
 .send-balance-retry:active {
-  background: rgba(249, 115, 22, 0.16);
+  background: #E6E9F0;
 }
 
 .send-amount-wrap {
   display: flex;
   align-items: center;
   background: #ffffff;
-  border: 1.5px solid #E5E0D8;
+  border: 1.5px solid #D9DEE8;
   border-radius: 16px;
   padding: 0 16px;
   height: 64px;
@@ -220,13 +220,13 @@
 }
 
 .send-amount-wrap.is-focused {
-  border-color: var(--orange-primary, #ff7300);
-  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.08);
+  border-color: var(--orange-primary, #FF4600);
+  box-shadow: none;
 }
 
 .send-amount-wrap.is-disabled {
-  background: #FAFAF9;
-  border-color: #E5E0D8;
+  background: #F4F6FA;
+  border-color: #D9DEE8;
 }
 
 .send-amount-input {
@@ -238,26 +238,26 @@
   font-family: inherit;
   font-size: 28px;
   font-weight: 700;
-  color: #1C1917;
+  color: #0B1633;
   letter-spacing: -0.8px;
   padding: 0;
 }
 
 .send-amount-input::placeholder {
-  color: #D1C9C0;
+  color: #D9DEE8;
 }
 
 .send-amount-input:disabled {
   cursor: not-allowed;
-  color: #78716C;
+  color: #5A6072;
 }
 
 .send-ticker-pill {
   display: flex;
   align-items: center;
   gap: 6px;
-  background: #FFF7ED;
-  border: 1px solid rgba(249, 115, 22, 0.2);
+  background: #F4F6FA;
+  border: 1px solid #D9DEE8;
   border-radius: 20px;
   padding: 5px 10px;
   flex-shrink: 0;
@@ -266,13 +266,13 @@
 .send-ticker-text {
   font-size: 13px;
   font-weight: 700;
-  color: var(--orange-primary, #ff7300);
+  color: #C43300;
   letter-spacing: 0.3px;
 }
 
 .send-hint {
   font-size: 12px;
-  color: #78716C;
+  color: #5A6072;
   margin-top: 7px;
   padding-left: 2px;
   text-align: left;
@@ -285,7 +285,7 @@
 .send-max-btn {
   font-size: 12px;
   font-weight: 600;
-  color: var(--orange-primary, #ff7300);
+  color: #C43300;
   background: none;
   border: none;
   cursor: pointer;
@@ -306,9 +306,9 @@
 
 .send-continue-btn {
   margin: 28px 24px 0;
-  height: 54px;
+  height: 48px;
   width: calc(100% - 48px);
-  background: var(--orange-primary, #ff7300);
+  background: var(--orange-primary, #FF4600);
   border: none;
   border-radius: 18px;
   display: flex;
@@ -318,11 +318,11 @@
   font-family: inherit;
   font-size: 15px;
   font-weight: 700;
-  color: #ffffff;
+  color: #0B1633;
   letter-spacing: -0.2px;
   cursor: pointer;
   transition: all 0.15s ease;
-  box-shadow: 0 8px 20px rgba(249, 115, 22, 0.28);
+  box-shadow: 0 4px 12px rgba(11, 22, 51, 0.12);
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -336,8 +336,8 @@
 
 .send-continue-btn.is-disabled,
 .send-continue-btn:disabled {
-  background: #E5E0D8;
-  color: #78716C;
+  background: #D9DEE8;
+  color: #5A6072;
   box-shadow: none;
   cursor: not-allowed;
 }

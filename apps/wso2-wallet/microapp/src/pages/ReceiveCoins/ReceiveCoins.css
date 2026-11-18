@@ -28,7 +28,7 @@
   padding: 16px 24px 0;
   font-size: 13px;
   line-height: 1.5;
-  color: #78716C;
+  color: #5A6072;
   text-align: left;
 }
 
@@ -40,7 +40,7 @@
 .receive-field-label {
   font-size: 11px;
   font-weight: 600;
-  color: #78716C;
+  color: #5A6072;
   letter-spacing: 0.8px;
   text-transform: uppercase;
   margin-bottom: 8px;
@@ -50,7 +50,7 @@
 /* Wallet address card */
 .receive-address-card {
   background: #ffffff;
-  border: 1.5px solid #E5E0D8;
+  border: 1.5px solid #D9DEE8;
   border-radius: 16px;
   padding: 14px 16px;
 }
@@ -58,7 +58,7 @@
 .receive-address-card-text {
   font-family: 'JetBrains Mono', 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
   font-size: 12px;
-  color: #1C1917;
+  color: #0B1633;
   word-break: break-all;
   text-align: left;
   letter-spacing: 0.2px;
@@ -67,7 +67,7 @@
 
 .receive-hint {
   font-size: 12px;
-  color: #78716C;
+  color: #5A6072;
   margin-top: 7px;
   padding-left: 2px;
   text-align: left;
@@ -78,7 +78,7 @@
   display: flex;
   align-items: center;
   background: #ffffff;
-  border: 1.5px solid #E5E0D8;
+  border: 1.5px solid #D9DEE8;
   border-radius: 16px;
   padding: 0 16px;
   height: 64px;
@@ -86,8 +86,8 @@
 }
 
 .receive-amount-wrap.is-focused {
-  border-color: var(--orange-primary, #ff7300);
-  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.08);
+  border-color: var(--orange-primary, #FF4600);
+  box-shadow: none;
 }
 
 .receive-amount-input {
@@ -99,21 +99,21 @@
   font-family: inherit;
   font-size: 28px;
   font-weight: 700;
-  color: #1C1917;
+  color: #0B1633;
   letter-spacing: -0.8px;
   padding: 0;
 }
 
 .receive-amount-input::placeholder {
-  color: #D1C9C0;
+  color: #D9DEE8;
 }
 
 .receive-ticker-pill {
   display: flex;
   align-items: center;
   gap: 6px;
-  background: #FFF7ED;
-  border: 1px solid rgba(249, 115, 22, 0.2);
+  background: #F4F6FA;
+  border: 1px solid #D9DEE8;
   border-radius: 20px;
   padding: 5px 10px;
   flex-shrink: 0;
@@ -126,7 +126,7 @@
 .receive-ticker-text {
   font-size: 13px;
   font-weight: 700;
-  color: var(--orange-primary, #ff7300);
+  color: #C43300;
   letter-spacing: 0.3px;
 }
 
@@ -137,19 +137,19 @@
   justify-content: center;
   gap: 8px;
   margin: 28px 24px 0;
-  height: 54px;
+  height: 48px;
   width: calc(100% - 48px);
-  background: var(--orange-primary, #ff7300);
+  background: var(--orange-primary, #FF4600);
   border: none;
   border-radius: 18px;
   font-family: inherit;
   font-size: 15px;
   font-weight: 700;
-  color: #ffffff;
+  color: #0B1633;
   letter-spacing: -0.2px;
   cursor: pointer;
   transition: all 0.15s ease;
-  box-shadow: 0 8px 20px rgba(249, 115, 22, 0.28);
+  box-shadow: 0 4px 12px rgba(11, 22, 51, 0.12);
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -163,8 +163,8 @@
 
 .receive-primary-btn.is-disabled,
 .receive-primary-btn:disabled {
-  background: #E5E0D8;
-  color: #78716C;
+  background: #D9DEE8;
+  color: #5A6072;
   box-shadow: none;
   cursor: not-allowed;
 }
@@ -174,7 +174,7 @@
   flex: 1.4;
   margin: 0;
   width: auto;
-  height: 52px;
+  height: 48px;
   font-size: 14px;
 }
 
@@ -182,7 +182,7 @@
 .receive-qr-card {
   margin: 18px 24px 0;
   background: #ffffff;
-  border: 1.5px solid #E5E0D8;
+  border: 1.5px solid #D9DEE8;
   border-radius: 20px;
   padding: 18px;
   display: flex;
@@ -198,8 +198,8 @@
 }
 
 .receive-qr-info {
-  background: #FAFAF9;
-  border: 1px solid #F0EDE8;
+  background: #F4F6FA;
+  border: 1px solid #E6E9F0;
   border-radius: 14px;
   padding: 14px 16px;
 }
@@ -220,14 +220,14 @@
 
 .receive-qr-divider {
   height: 1px;
-  background: #F0EDE8;
+  background: #E6E9F0;
   margin: 10px 0;
 }
 
 .receive-qr-label {
   font-size: 11px;
   font-weight: 600;
-  color: #78716C;
+  color: #5A6072;
   letter-spacing: 0.6px;
   text-transform: uppercase;
 }
@@ -241,14 +241,14 @@
 .receive-qr-amount-num {
   font-size: 16px;
   font-weight: 700;
-  color: #1C1917;
+  color: #0B1633;
   letter-spacing: -0.4px;
 }
 
 .receive-qr-address {
   font-family: 'JetBrains Mono', 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
   font-size: 12px;
-  color: #374151;
+  color: #0B1633;
   font-weight: 500;
 }
 
@@ -261,14 +261,14 @@
 
 .receive-secondary-btn {
   flex: 1;
-  height: 52px;
+  height: 48px;
   background: #ffffff;
-  border: 1.5px solid #E5E0D8;
+  border: 1.5px solid #D9DEE8;
   border-radius: 18px;
   font-family: inherit;
   font-size: 14px;
   font-weight: 600;
-  color: #1C1917;
+  color: #0B1633;
   letter-spacing: -0.2px;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -284,6 +284,6 @@
 }
 
 .receive-secondary-btn:active {
-  background: #F0EDE8;
+  background: #E6E9F0;
   transform: scale(0.98);
 }

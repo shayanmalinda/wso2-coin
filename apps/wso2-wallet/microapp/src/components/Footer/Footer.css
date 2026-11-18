@@ -21,7 +21,7 @@
   align-items: stretch;
   width: 100%;
   background: #ffffff;
-  border-top: 1px solid #F0EDE8;
+  border-top: 1px solid #E6E9F0;
   padding: 12px 0 var(--safe-area-bottom, 8px);
   box-sizing: border-box;
   box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.04);
@@ -39,7 +39,7 @@
   cursor: pointer;
   padding: 0;
   font-family: inherit;
-  color: #9CA3AF;
+  color: #8A90A0;
   transition: color 0.15s ease, opacity 0.15s ease;
   -webkit-tap-highlight-color: transparent;
 }
@@ -53,7 +53,7 @@
 }
 
 .footer-nav-item.is-active {
-  color: var(--orange-primary, #ff7300);
+  color: #C43300;
 }
 
 .footer-nav-icon {

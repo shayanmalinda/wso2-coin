@@ -17,7 +17,21 @@
  */
 
 :root {
-  --orange-primary: #ff7300;
+  /* Choreo Labs palette. Rules from the brand guide: text on Signal is Midnight
+     Ink, orange text on a light surface is Burn, and no gradients or tints. */
+  --cl-signal: #FF4600;
+  --cl-burn: #C43300;
+  --cl-midnight-ink: #0B1633;
+  --cl-blackout: #050A1C;
+  --cl-cobalt: #1F4FFF;
+  --cl-slate: #5A6072;
+  --cl-paper: #F4F6FA;
+  --cl-white: #FFFFFF;
+  /* Neutrals derived for hairlines and placeholder text; the guide has none. */
+  --cl-line: #D9DEE8;
+  --cl-line-soft: #E6E9F0;
+  --cl-muted: #8A90A0;
+  --orange-primary: var(--cl-signal);
   --safe-area-top: 0px;
   --safe-area-bottom: 12px;
   --topbar-height: 52px;
@@ -47,7 +61,7 @@
 }
 
 .App-header {
-  background-color: #282c34;
+  background-color: #0B1633;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
@@ -77,62 +91,63 @@
   line-height: 21px;
   letter-spacing: 0em;
   text-align: center;
-  height: 50px !important;
+  height: 48px !important;
   border-radius: 9px;
   transition: all 0.15s ease;
 }
 .primary-button.disabled {
-  background: #e9ecef !important;
-  color: #6c757d !important;
-  border: 1px solid #ced4da !important;
+  background: #E6E9F0 !important;
+  color: #5A6072 !important;
+  border: 1px solid #D9DEE8 !important;
   opacity: 1;
   cursor: not-allowed;
 }
 .primary-button:hover,
 .primary-button:focus {
   background: var(--orange-primary) !important;
-  color: #ffffff !important;
+  color: #0B1633 !important;
   border: 1px solid var(--orange-primary) !important;
   outline: none !important;
 }
 .primary-button:active {
-  background: #e66a00 !important;
-  color: #ffffff !important;
-  border: 1px solid #e66a00 !important;
+  background: var(--orange-primary) !important;
+  color: #0B1633 !important;
+  border: 1px solid var(--orange-primary) !important;
+  opacity: 0.85;
   opacity: 0.9;
   transform: scale(0.98);
 }
 .primary-button:disabled,
 .ant-btn.primary-button:disabled,
 .ant-btn[disabled].primary-button {
-  background: #e9ecef !important;
-  color: #6c757d !important;
-  border: 1px solid #ced4da !important;
+  background: #E6E9F0 !important;
+  color: #5A6072 !important;
+  border: 1px solid #D9DEE8 !important;
   box-shadow: none !important;
 }
 .default-button {
   background: #ffffff !important;
-  border: 1px solid #8c8c8c !important;
+  border: 1px solid #8A90A0 !important;
   color: rgba(0, 0, 0, 0.88) !important;
   font-size: 16px;
   font-weight: 700;
   line-height: 21px;
   letter-spacing: 0em;
   text-align: center;
-  height: 50px !important;
+  height: 48px !important;
   border-radius: 9px;
   transition: all 0.15s ease;
 }
 .default-button:hover,
 .default-button:focus {
   background: #ffffff !important;
-  border-color: #8c8c8c !important;
+  border-color: #8A90A0 !important;
   color: rgba(0, 0, 0, 0.88) !important;
   outline: none !important;
 }
 .default-button:active {
-  background: #f0f0f0 !important;
-  border-color: #8c8c8c !important;
+  background: #E6E9F0 !important;
+  border-color: #8A90A0 !important;
   color: rgba(0, 0, 0, 0.88) !important;
   opacity: 0.9;
   transform: scale(0.98);
@@ -141,27 +156,27 @@
 /* Secondary button style for non-primary actions */
 .secondary-button {
   background: #ffffff !important;
-  border: 1px solid #8c8c8c !important;
+  border: 1px solid #8A90A0 !important;
   color: rgba(0, 0, 0, 0.88) !important;
   font-size: 16px;
   font-weight: 700;
   line-height: 21px;
   letter-spacing: 0em;
   text-align: center;
-  height: 50px !important;
+  height: 48px !important;
   border-radius: 9px;
   transition: all 0.15s ease;
 }
 .secondary-button:hover,
 .secondary-button:focus {
   background: #ffffff !important;
-  border-color: #8c8c8c !important;
+  border-color: #8A90A0 !important;
   color: rgba(0, 0, 0, 0.88) !important;
   outline: none !important;
 }
 .secondary-button:active {
-  background: #f0f0f0 !important;
-  border-color: #8c8c8c !important;
+  background: #E6E9F0 !important;
+  border-color: #8A90A0 !important;
   color: rgba(0, 0, 0, 0.88) !important;
   opacity: 0.9;
   transform: scale(0.98);
@@ -221,13 +236,13 @@
   top: 0;
   bottom: 0;
   padding-top: calc(var(--safe-area-top, 0px) + var(--topbar-height, 44px));
-  background: #FAFAF9;
+  background: #F4F6FA;
 }
 
 .main-layout.ant-layout,
 .site-layout.ant-layout,
 .layout-content.ant-layout-content {
-  background: #FAFAF9;
+  background: #F4F6FA;
 }
 
 .layout-content {

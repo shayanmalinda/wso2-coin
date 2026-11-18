@@ -45,14 +45,14 @@
   justify-content: center;
   margin-bottom: 8px;
   box-shadow:
-    0 0 0 8px rgba(249, 115, 22, 0.08),
-    0 0 0 16px rgba(249, 115, 22, 0.04);
+    0 0 0 8px #E6E9F0,
+    0 0 0 16px #F4F6FA;
 }
 
 .cw-title {
   font-size: 30px;
   font-weight: 700;
-  color: #1C1917;
+  color: #0B1633;
   letter-spacing: -1px;
   text-align: center;
   margin: 0;
@@ -60,7 +60,7 @@
 
 .cw-subtitle {
   font-size: 14px;
-  color: #9CA3AF;
+  color: #8A90A0;
   text-align: center;
   line-height: 1.55;
   font-weight: 400;
@@ -75,8 +75,8 @@
 }
 
 .cw-btn-primary {
-  height: 56px;
-  background: var(--orange-primary, #ff7300);
+  height: 48px;
+  background: var(--orange-primary, #FF4600);
   border: none;
   border-radius: 20px;
   display: flex;
@@ -87,10 +87,10 @@
   font-family: inherit;
   font-size: 16px;
   font-weight: 700;
-  color: #ffffff;
+  color: #0B1633;
   letter-spacing: -0.3px;
   transition: all 0.15s ease;
-  box-shadow: 0 10px 24px rgba(249, 115, 22, 0.32);
+  box-shadow: 0 4px 12px rgba(11, 22, 51, 0.12);
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -100,7 +100,7 @@
 
 .cw-btn-primary:active:not(:disabled) {
   transform: scale(0.98);
-  box-shadow: 0 5px 12px rgba(249, 115, 22, 0.2);
+  box-shadow: 0 4px 12px rgba(11, 22, 51, 0.12);
 }
 
 .cw-btn-primary:disabled {
@@ -109,7 +109,7 @@
 }
 
 .cw-btn-ghost {
-  height: 52px;
+  height: 48px;
   background: transparent;
   border: none;
   border-radius: 20px;
@@ -121,7 +121,7 @@
   font-family: inherit;
   font-size: 15px;
   font-weight: 600;
-  color: var(--orange-primary, #ff7300);
+  color: #C43300;
   letter-spacing: -0.2px;
   transition: all 0.15s ease;
   -webkit-tap-highlight-color: transparent;
@@ -132,7 +132,7 @@
 }
 
 .cw-btn-ghost:active:not(:disabled) {
-  background: #FFF7ED;
+  background: #F4F6FA;
 }
 
 .cw-btn-ghost:disabled {
