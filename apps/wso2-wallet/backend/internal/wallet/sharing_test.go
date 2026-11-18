@@ -271,7 +271,7 @@ func TestRevokeAccess(t *testing.T) {
 	svc, _, _ := sharingSvc(t)
 	grant(t, svc, member, model.RoleTransact)
 
-	if err := svc.RevokeAccess(ctx, member, team, member); err != nil {
+	if err := svc.LeaveWallet(ctx, member, team); err != nil {
 		t.Fatalf("member removing self: %v", err)
 	}
 	if _, err := svc.Balance(ctx, member, team); !errors.Is(err, ErrForbidden) {
@@ -279,5 +279,18 @@ func TestRevokeAccess(t *testing.T) {
 	}
 	if err := svc.RevokeAccess(ctx, owner, team, member); !errors.Is(err, ErrNotFound) {
 		t.Errorf("revoking a missing grant = %v, want ErrNotFound", err)
+	}
+}
+
+func TestGrantRejectsLookAlikeEmail(t *testing.T) {
+	ctx := context.Background()
+	svc, _, _ := sharingSvc(t)
+	// U+212A (Kelvin sign) lowercases to ASCII "k".
+	req := model.AccessRequest{Email: "\u212Aim@wso2.com", AccessLevel: model.RoleRead}
+	if err := svc.GrantAccess(ctx, owner, team, req); !errors.Is(err, ErrInvalidGrant) {
+		t.Errorf("GrantAccess(look-alike) = %v, want ErrInvalidGrant", err)
+	}
+	if err := svc.RevokeAccess(ctx, owner, team, req.Email); !errors.Is(err, ErrNotFound) {
+		t.Errorf("RevokeAccess(look-alike) = %v, want ErrNotFound", err)
 	}
 }

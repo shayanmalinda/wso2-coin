@@ -524,7 +524,7 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-.profile-modal-outline-btn:focus {
+.profile-modal-outline-btn:focus:not(:focus-visible) {
   outline: none;
 }
 

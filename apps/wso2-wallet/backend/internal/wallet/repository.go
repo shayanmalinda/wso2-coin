@@ -85,6 +85,9 @@ type Queries interface {
 	UpdateBalance(ctx context.Context, address, encBalance string) error
 	InsertWallet(ctx context.Context, address, email, encBalance string, isDefault bool) error
 	InsertTransaction(ctx context.Context, t TxnInsert) error
+	// LockGrant reads a grant and holds it until the transaction ends, so the
+	// grant cannot be changed or removed underneath the transaction.
+	LockGrant(ctx context.Context, address, email string) (*GrantRow, error)
 }
 
 // Repository is the wallet persistence contract.
@@ -94,6 +97,9 @@ type Repository interface {
 	SetPrimary(ctx context.Context, email, address string) error
 	Transactions(ctx context.Context, address string, limit, offset int, direction string) ([]TxnRow, error)
 	SetWalletName(ctx context.Context, address string, encName sql.NullString) error
+	// SetWalletNameIfShared sets the name only while the wallet has a grant and
+	// reports whether it did.
+	SetWalletNameIfShared(ctx context.Context, address, encName string) (bool, error)
 	SharedWalletsByEmail(ctx context.Context, email string) ([]SharedWalletRow, error)
 	Grant(ctx context.Context, address, email string) (*GrantRow, error)
 	Grants(ctx context.Context, address string) ([]GrantRow, error)
@@ -196,6 +202,20 @@ func (r *mysqlRepository) SetWalletName(ctx context.Context, address string, enc
 		return fmt.Errorf("set wallet name: %w", err)
 	}
 	return nil
+}
+
+func (r *mysqlRepository) SetWalletNameIfShared(ctx context.Context, address, encName string) (bool, error) {
+	const q = `UPDATE user_wallet SET wallet_name = ? WHERE wallet_address = ?
+		AND EXISTS (SELECT 1 FROM wallet_access a WHERE a.wallet_address = ?)`
+	res, err := r.db.ExecContext(ctx, q, encName, address, address)
+	if err != nil {
+		return false, fmt.Errorf("set wallet name: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("set wallet name: %w", err)
+	}
+	return n > 0, nil
 }
 
 func (r *mysqlRepository) SharedWalletsByEmail(ctx context.Context, email string) ([]SharedWalletRow, error) {
@@ -301,6 +321,21 @@ func (r *mysqlRepository) Tx(ctx context.Context, fn func(Queries) error) error 
 
 type txQueries struct {
 	tx *sql.Tx
+}
+
+func (q *txQueries) LockGrant(ctx context.Context, address, email string) (*GrantRow, error) {
+	const stmt = `SELECT wallet_address, user_email, access_level, seal, granted_by, created_on
+		FROM wallet_access WHERE wallet_address = ? AND user_email = ? LOCK IN SHARE MODE`
+	var g GrantRow
+	err := q.tx.QueryRowContext(ctx, stmt, address, email).
+		Scan(&g.Address, &g.Email, &g.Level, &g.Seal, &g.GrantedBy, &g.CreatedOn)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("lock grant: %w", err)
+	}
+	return &g, nil
 }
 
 func (q *txQueries) LockBalance(ctx context.Context, address string) (string, error) {

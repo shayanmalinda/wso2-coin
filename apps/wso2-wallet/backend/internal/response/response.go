@@ -41,7 +41,7 @@ const (
 	ErrMsgInvalidAmount     = "Invalid transfer amount."
 	ErrMsgInsufficientFunds = "Insufficient funds."
 
-	ErrMsgInvalidName      = "Wallet name must be 50 characters or fewer."
+	ErrMsgInvalidName      = "Wallet name must use printable characters and be at most 50 characters long."
 	ErrMsgNameNotAllowed   = "Share the wallet with at least one person before naming it."
 	ErrMsgInvalidGrant     = "Invalid email or access level."
 	ErrMsgDomainNotAllowed = "Wallets can only be shared between people in the organization."

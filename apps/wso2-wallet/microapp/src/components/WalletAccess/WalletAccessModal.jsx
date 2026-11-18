@@ -34,6 +34,7 @@ import {
   ACCESS_UPDATED,
   ADD_PERSON,
   ADD_PERSON_PLACEHOLDER,
+  ALREADY_HAS_ACCESS,
   CANCEL,
   CONFIRM_REMOVE_ACCESS,
   ERROR,
@@ -45,6 +46,7 @@ import {
   PEOPLE_WITH_ACCESS,
   REMOVE,
   REMOVE_ACCESS,
+  RETRY,
   SAVE,
   SUCCESS,
   WALLET_NAME,
@@ -94,6 +96,8 @@ function WalletAccessModal({ open, wallet, onClose }) {
     data: grants = [],
     isLoading,
     isError,
+    isFetching,
+    refetch,
   } = useQuery({
     queryKey: ["walletAccess", address],
     queryFn: () => getWalletAccess(address),
@@ -124,18 +128,19 @@ function WalletAccessModal({ open, wallet, onClose }) {
     if (open) setName(savedName);
   }, [open, address, savedName]);
 
-  const refresh = async () => {
-    await Promise.all([
+  const refresh = () =>
+    Promise.all([
       queryClient.invalidateQueries({ queryKey: ["walletAccess", address] }),
       queryClient.invalidateQueries({ queryKey: ["userWallets"] }),
-    ]);
-  };
+    ]).catch((error) => console.error("Failed to refresh wallet access", error));
 
   const run = async (key, action, successText, failureText) => {
     setBusy(key);
     try {
       await action();
-      await refresh();
+      // The write is done. Reload in the background so a slow refresh cannot keep
+      // the dialog stuck; the controls stay locked while it loads (see isFetching).
+      refresh();
       showToast(SUCCESS, successText);
       return true;
     } catch (error) {
@@ -150,6 +155,12 @@ function WalletAccessModal({ open, wallet, onClose }) {
   const handleAdd = async () => {
     const trimmed = email.trim();
     if (!trimmed) return;
+    // Add would silently overwrite an existing member's level, so send the owner to
+    // the level selector instead.
+    if (grants.some((g) => g.email.toLowerCase() === trimmed.toLowerCase())) {
+      showToast(ERROR, ALREADY_HAS_ACCESS);
+      return;
+    }
     const added = await run(
       "add",
       () => grantWalletAccess(address, trimmed, level),
@@ -170,7 +181,9 @@ function WalletAccessModal({ open, wallet, onClose }) {
     if (removed) setToRemove(null);
   };
 
-  const isShared = grants.length > 0;
+  // A failed read means we do not know who has access, which is not the same as nobody.
+  const isShared = !isError && grants.length > 0;
+  const locked = !!busy || isFetching;
   const trimmedName = name.trim();
   const nameChanged = trimmedName !== savedName;
 
@@ -208,12 +221,12 @@ function WalletAccessModal({ open, wallet, onClose }) {
                   ERROR_SAVING_WALLET_NAME,
                 )
               }
-              disabled={!isShared || !nameChanged || !!busy}
+              disabled={!isShared || !nameChanged || locked}
             >
               {busy === "name" ? <LoadingOutlined spin /> : SAVE}
             </button>
           </div>
-          {!isShared && !isLoading && (
+          {!isShared && !isLoading && !isError && (
             <div className="wallet-access-hint">{WALLET_NAME_NEEDS_SHARING}</div>
           )}
 
@@ -226,7 +239,15 @@ function WalletAccessModal({ open, wallet, onClose }) {
             </div>
           ) : isError ? (
             <div className="wallet-access-hint is-error">
-              {ERROR_LOADING_ACCESS}
+              {ERROR_LOADING_ACCESS}{" "}
+              <button
+                type="button"
+                className="wallet-access-btn"
+                onClick={() => refetch()}
+                disabled={isFetching}
+              >
+                {RETRY}
+              </button>
             </div>
           ) : !isShared ? (
             <div className="wallet-access-hint">{NO_ONE_HAS_ACCESS}</div>
@@ -238,7 +259,7 @@ function WalletAccessModal({ open, wallet, onClose }) {
                   <LevelSelect
                     value={g.accessLevel}
                     label={`Access level for ${g.email}`}
-                    disabled={!!busy}
+                    disabled={locked}
                     onChange={(next) =>
                       run(
                         g.email,
@@ -252,7 +273,7 @@ function WalletAccessModal({ open, wallet, onClose }) {
                     type="button"
                     className="wallet-access-remove"
                     onClick={() => setToRemove(g.email)}
-                    disabled={!!busy}
+                    disabled={locked}
                     aria-label={`${REMOVE_ACCESS} for ${g.email}`}
                   >
                     {busy === g.email ? (
@@ -290,7 +311,7 @@ function WalletAccessModal({ open, wallet, onClose }) {
                 type="button"
                 className="wallet-access-btn is-primary"
                 onClick={handleAdd}
-                disabled={!email.trim() || !!busy}
+                disabled={!email.trim() || locked}
               >
                 {busy === "add" ? (
                   <LoadingOutlined spin />

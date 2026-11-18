@@ -79,10 +79,16 @@ A wallet can be named only while it is shared with at least one other person, an
 name is shown only while that holds. Each transfer records who made it; the sending
 wallet's history shows it.
 
-Access rows, the wallet name and the transfer initiator are encrypted with
-`ENCRYPTION_KEY` and bound to their wallet, user or transaction. A row inserted or
-edited directly in the database fails that check and is ignored. The wallet owner
-(`user_wallet.user_email`) is not protected this way.
+Access rows, the wallet name and the transfer initiator are sealed with
+`ENCRYPTION_KEY` and bound to their wallet, user or transaction. The seal covers the
+access level (bound to the wallet and person), the name and the initiator. A grant
+inserted or edited without the key fails the check and is ignored. The seal does not
+cover `granted_by` or `created_on`, and it cannot detect replay: someone who can write
+to the database could restore a previously valid grant after it was revoked. The
+wallet owner (`user_wallet.user_email`) is not protected this way.
+
+`SHARING_EMAIL_DOMAIN` is checked when a grant is created or changed. Changing it
+later does not remove existing grants; the owner has to revoke them.
 
 Existing databases need `resources/migration_add_shared_wallets.sql`. It only adds
 nullable columns and one table, so it can be applied before this version is deployed.

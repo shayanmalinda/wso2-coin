@@ -322,6 +322,20 @@ func (s *Service) Transfer(ctx context.Context, email string, req model.Transfer
 	}
 
 	err = s.repo.Tx(ctx, func(q Queries) error {
+		// Re-check the grant under a lock so a revoke or downgrade cannot slip in
+		// between the access check above and the debit.
+		if role != model.RoleOwner {
+			g, err := q.LockGrant(ctx, from.Address, normEmail(email))
+			if err != nil {
+				return err
+			}
+			if g == nil {
+				return ErrForbidden
+			}
+			if locked, ok := s.grantRole(*g, email); !ok || locked != model.RoleTransact {
+				return ErrForbidden
+			}
+		}
 		balances, err := s.lockBalances(ctx, q, from.Address, to.Address)
 		if err != nil {
 			return err
@@ -387,14 +401,20 @@ func (s *Service) Rename(ctx context.Context, email, address, name string) error
 	if !validName(name) {
 		return ErrInvalidName
 	}
-	if w.GrantCount == 0 {
-		return ErrNameNotAllowed
-	}
 	enc, err := s.enc.Encrypt(name, nameAAD(w.Address))
 	if err != nil {
 		return err
 	}
-	return s.repo.SetWalletName(ctx, w.Address, sql.NullString{String: enc, Valid: true})
+	// The shared check and the write are one statement, so a grant removed in
+	// between cannot leave a name on a wallet that is no longer shared.
+	named, err := s.repo.SetWalletNameIfShared(ctx, w.Address, enc)
+	if err != nil {
+		return err
+	}
+	if !named {
+		return ErrNameNotAllowed
+	}
+	return nil
 }
 
 // WalletInfo returns what anyone may know about a wallet before sending to it: that
@@ -444,8 +464,8 @@ func (s *Service) GrantAccess(ctx context.Context, email, address string, req mo
 	if err != nil {
 		return err
 	}
-	grantee := normEmail(req.Email)
-	if !validEmail(grantee) || ownedBy(w, grantee) {
+	grantee, ok := parseEmail(req.Email)
+	if !ok || ownedBy(w, grantee) {
 		return ErrInvalidGrant
 	}
 	if req.AccessLevel != model.RoleRead && req.AccessLevel != model.RoleTransact {
@@ -463,9 +483,21 @@ func (s *Service) GrantAccess(ctx context.Context, email, address string, req mo
 	})
 }
 
-// RevokeAccess removes a person's access. The owner can remove anyone; a person
-// with access can remove themselves.
+// RevokeAccess lets the wallet owner remove a person's access.
 func (s *Service) RevokeAccess(ctx context.Context, email, address, grantee string) error {
+	w, err := s.ownedWallet(ctx, email, address)
+	if err != nil {
+		return err
+	}
+	g, ok := parseEmail(grantee)
+	if !ok {
+		return ErrNotFound
+	}
+	return s.deleteGrant(ctx, w.Address, g)
+}
+
+// LeaveWallet removes the caller's own access to a wallet shared with them.
+func (s *Service) LeaveWallet(ctx context.Context, email, address string) error {
 	w, err := s.repo.WalletByAddress(ctx, address)
 	if err != nil {
 		return err
@@ -473,11 +505,17 @@ func (s *Service) RevokeAccess(ctx context.Context, email, address, grantee stri
 	if w == nil {
 		return ErrNotFound
 	}
-	grantee = normEmail(grantee)
-	if !ownedBy(w, email) && grantee != normEmail(email) {
-		return ErrForbidden
+	// The database matches emails loosely, so an identity that is not plain ASCII
+	// must not be able to reach another person's grant.
+	self, ok := parseEmail(email)
+	if !ok {
+		return ErrNotFound
 	}
-	removed, err := s.repo.DeleteGrant(ctx, w.Address, grantee)
+	return s.deleteGrant(ctx, w.Address, self)
+}
+
+func (s *Service) deleteGrant(ctx context.Context, address, grantee string) error {
+	removed, err := s.repo.DeleteGrant(ctx, address, grantee)
 	if err != nil {
 		return err
 	}
@@ -649,6 +687,16 @@ func transactionTime(row TxnRow) time.Time {
 
 func normEmail(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
+}
+
+// parseEmail trims and validates an address before lowercasing it, so characters
+// that lowercase to ASCII (such as the Kelvin sign) are rejected, not folded.
+func parseEmail(email string) (string, bool) {
+	email = strings.TrimSpace(email)
+	if !validEmail(email) {
+		return "", false
+	}
+	return strings.ToLower(email), true
 }
 
 // validEmail is a shape check only; the sharing-domain check does the real gating.

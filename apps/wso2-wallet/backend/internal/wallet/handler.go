@@ -160,7 +160,11 @@ func (h *Handler) rename(w http.ResponseWriter, r *http.Request) {
 		response.WriteDecodeError(w, err)
 		return
 	}
-	if err := h.svc.Rename(r.Context(), email, r.PathValue("address"), req.Name); err != nil {
+	if req.Name == nil {
+		response.WriteError(w, http.StatusBadRequest, response.ErrMsgBadRequest)
+		return
+	}
+	if err := h.svc.Rename(r.Context(), email, r.PathValue("address"), *req.Name); err != nil {
 		writeServiceError(r.Context(), w, err)
 		return
 	}
@@ -220,7 +224,7 @@ func (h *Handler) leaveWallet(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := h.svc.RevokeAccess(r.Context(), email, r.PathValue("address"), email); err != nil {
+	if err := h.svc.LeaveWallet(r.Context(), email, r.PathValue("address")); err != nil {
 		writeServiceError(r.Context(), w, err)
 		return
 	}

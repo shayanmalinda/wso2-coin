@@ -120,7 +120,7 @@ paths:
           $ref: "#/components/responses/Error"
   /api/v1/wallets/{address}/name:
     post:
-      summary: Set or clear the wallet name (owner only; the wallet must be shared)
+      summary: Set or clear the wallet name (owner only; setting a non-empty name requires the wallet to be shared, clearing does not)
       parameters:
         - $ref: "#/components/parameters/Address"
       requestBody:

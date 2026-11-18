@@ -123,6 +123,10 @@ function Home() {
     }
   }, [walletAddress, refetch]);
 
+  // Pull to refresh reloads the wallet list too, so a change to the user's access
+  // (or the wallet's name) shows up without reopening the app.
+  const handlePullRefresh = () => Promise.all([refetch(), fetchWalletAddress()]);
+
   const handleSend = () => {
     navigate("/send");
   };
@@ -208,7 +212,7 @@ function Home() {
       <RecentActivities
         ref={recentActivitiesRef}
         walletAddress={walletAddress}
-        onPullRefresh={refetch}
+        onPullRefresh={handlePullRefresh}
       />
     </div>
   );

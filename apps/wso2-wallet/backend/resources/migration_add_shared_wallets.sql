@@ -17,6 +17,12 @@
 -- Shared, named wallets. Run once against an existing wallet database.
 -- Every change is additive (nullable columns and one new table), so it can be
 -- applied ahead of the backend deployment.
+--
+-- MySQL commits each ALTER TABLE on its own, so an interrupted run can leave the
+-- schema half applied. Before re-running, check which statements already took
+-- effect (SHOW COLUMNS FROM user_wallet LIKE 'wallet_name'; SHOW COLUMNS FROM
+-- `transaction` LIKE 'initiated_by'; SHOW TABLES LIKE 'wallet_access') and run only
+-- the missing ones. Deploy the backend only after all three exist.
 
 ALTER TABLE user_wallet
     ADD COLUMN wallet_name VARCHAR(512) NULL

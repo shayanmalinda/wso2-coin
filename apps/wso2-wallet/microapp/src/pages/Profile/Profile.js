@@ -153,6 +153,11 @@ function Profile() {
   } = useUserWallets(walletAddress, { refetchOnMount: 'always' });
 
   const [selectedWallet, setSelectedWallet] = useState(null);
+  // The list is refetched after sharing changes, so show the fresh copy of the
+  // selected wallet (name, Shared tag) rather than the one captured on tap.
+  const detailWallet =
+    userWallets.find((w) => w.walletAddress === selectedWallet?.walletAddress) ||
+    selectedWallet;
   const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
   const [isSettingPrimary, setIsSettingPrimary] = useState(false);
   const [isSwitching, setIsSwitching] = useState(false);
@@ -244,8 +249,13 @@ function Profile() {
         walletAddress &&
         selectedWallet.walletAddress.toLowerCase() === walletAddress.toLowerCase();
       if (wasActive) {
-        // Home falls back to the default wallet when the stored one is gone.
-        await saveLocalDataAsync(STORAGE_KEYS.WALLET_ADDRESS, '');
+        // Home falls back to the default wallet when the stored one is gone. The
+        // wallet is already left, so a failed local write must not undo that.
+        try {
+          await saveLocalDataAsync(STORAGE_KEYS.WALLET_ADDRESS, '');
+        } catch (storageError) {
+          console.error('Error clearing the active wallet:', storageError);
+        }
       }
       setConfirmAction(null);
       setIsWalletModalOpen(false);
@@ -288,34 +298,34 @@ function Profile() {
         title="Wallet Details"
         centered
       >
-        {selectedWallet && (() => {
+        {detailWallet && (() => {
           const isActive =
             walletAddress &&
-            selectedWallet.walletAddress &&
-            selectedWallet.walletAddress.toLowerCase() ===
+            detailWallet.walletAddress &&
+            detailWallet.walletAddress.toLowerCase() ===
               walletAddress.toLowerCase();
-          const isPrimary = selectedWallet.defaultWallet;
-          const owned = isOwner(selectedWallet);
-          const showTagRow = isActive || isPrimary || !owned || selectedWallet.shared;
+          const isPrimary = detailWallet.defaultWallet;
+          const owned = isOwner(detailWallet);
+          const showTagRow = isActive || isPrimary || !owned || detailWallet.shared;
           return (
             <div className="profile-modal">
-              {selectedWallet.name && (
-                <div className="profile-modal-name">{selectedWallet.name}</div>
+              {detailWallet.name && (
+                <div className="profile-modal-name">{detailWallet.name}</div>
               )}
               <CopyToClipboard
-                text={selectedWallet.walletAddress}
+                text={detailWallet.walletAddress}
                 onCopy={handleCopyAddress}
               >
                 <button type="button" className="profile-modal-address">
                   <span className="profile-modal-address-text">
-                    {selectedWallet.walletAddress}
+                    {detailWallet.walletAddress}
                   </span>
                   {isAddressCopied ? <CheckOutlined /> : <CopyOutlined />}
                 </button>
               </CopyToClipboard>
               <div className="profile-modal-meta">
                 Created on{' '}
-                {new Date(selectedWallet.createdOn).toLocaleString()}
+                {new Date(detailWallet.createdOn).toLocaleString()}
               </div>
 
               {showTagRow && (
@@ -326,7 +336,7 @@ function Profile() {
                   {isActive && (
                     <span className="profile-active-tag">{CURRENTLY_VIEWING}</span>
                   )}
-                  <SharingTags wallet={selectedWallet} />
+                  <SharingTags wallet={detailWallet} />
                 </div>
               )}
 
@@ -471,12 +481,7 @@ function Profile() {
       {/* Naming and sharing, for wallets the user owns */}
       <WalletAccessModal
         open={isAccessModalOpen}
-        wallet={
-          // Read the wallet from the fresh list so a saved name shows straight away.
-          userWallets.find(
-            (w) => w.walletAddress === selectedWallet?.walletAddress,
-          ) || selectedWallet
-        }
+        wallet={detailWallet}
         onClose={() => setIsAccessModalOpen(false)}
       />
 

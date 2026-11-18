@@ -131,6 +131,9 @@ export const ADD_PERSON_PLACEHOLDER = "name@wso2.com";
 export const ACCESS_UPDATED = "Access updated";
 export const ACCESS_REMOVED = "Access removed";
 export const ERROR_LOADING_ACCESS = "Couldn't load who has access";
+export const RETRY = "Retry";
+export const ALREADY_HAS_ACCESS =
+  "This person already has access. Change their level in the list instead.";
 export const ERROR_UPDATING_ACCESS = "Couldn't update access";
 export const REMOVE_ACCESS = "Remove access";
 export const CONFIRM_REMOVE_ACCESS = "will no longer be able to use this wallet.";

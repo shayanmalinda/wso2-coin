@@ -59,7 +59,8 @@ type WalletInfo struct {
 
 // RenameRequest is the body of a wallet rename. An empty name clears it.
 type RenameRequest struct {
-	Name string `json:"name"`
+	// Name is a pointer so a missing or null name can be told apart from an empty one.
+	Name *string `json:"name"`
 }
 
 // AccessGrant is one person's access to a shared wallet.

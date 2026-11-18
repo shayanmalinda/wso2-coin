@@ -52,6 +52,15 @@ func (r *fakeRepo) SetWalletName(_ context.Context, address string, encName sql.
 	return nil
 }
 
+func (r *fakeRepo) SetWalletNameIfShared(_ context.Context, address, encName string) (bool, error) {
+	w := r.find(address)
+	if w == nil || r.grantCount(address) == 0 {
+		return false, nil
+	}
+	w.Name = sql.NullString{String: encName, Valid: true}
+	return true, nil
+}
+
 func (r *fakeRepo) SharedWalletsByEmail(_ context.Context, email string) ([]SharedWalletRow, error) {
 	var out []SharedWalletRow
 	for _, g := range r.grants {
@@ -165,6 +174,10 @@ func (r *fakeRepo) Tx(_ context.Context, fn func(Queries) error) error {
 
 type fakeQueries struct {
 	r *fakeRepo
+}
+
+func (q *fakeQueries) LockGrant(ctx context.Context, address, email string) (*GrantRow, error) {
+	return q.r.Grant(ctx, address, email)
 }
 
 func (q *fakeQueries) LockBalance(_ context.Context, address string) (string, error) {
