@@ -41,6 +41,8 @@ const (
 	// retryAfterFailure is how long a failed refresh is left alone before trying
 	// again, so an HR outage does not turn every keystroke into an upstream call.
 	retryAfterFailure = time.Minute
+	// refreshTimeout bounds one refresh of the whole employee list.
+	refreshTimeout = 90 * time.Second
 )
 
 // Employee is one active employee as read from the HR entity.
@@ -155,7 +157,12 @@ func (d *Directory) list(ctx context.Context) ([]Employee, error) {
 		return nil, ErrUnavailable
 	}
 
-	employees, err := d.source.Employees(ctx)
+	// The refreshed list is shared by every caller, so it must not depend on the
+	// request that happened to trigger it: a caller who disconnects mid-refresh
+	// would otherwise fail it and mark the directory as down for everyone.
+	refreshCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), refreshTimeout)
+	defer cancel()
+	employees, err := d.source.Employees(refreshCtx)
 	if err != nil {
 		d.failedAt = now
 		slog.ErrorContext(ctx, "employee directory refresh failed", "err", err)

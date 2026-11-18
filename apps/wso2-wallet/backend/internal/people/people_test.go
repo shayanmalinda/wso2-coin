@@ -127,6 +127,34 @@ func TestDirectoryCachesAndSurvivesOutage(t *testing.T) {
 	}
 }
 
+// A caller who gives up mid-refresh must not fail the refresh for everyone else.
+func TestRefreshIgnoresCallerCancellation(t *testing.T) {
+	src := &ctxSource{employees: staff()}
+	dir := NewDirectory(src, "wso2.com")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	got, err := dir.Search(ctx, "anna", "")
+	if err != nil || len(got) == 0 {
+		t.Fatalf("Search with a cancelled caller = %+v, %v; want results", got, err)
+	}
+	if _, err := dir.Search(context.Background(), "anna", ""); err != nil {
+		t.Fatalf("next caller got %v; the directory should not be marked down", err)
+	}
+}
+
+// ctxSource fails the way a real HTTP client does when its context is cancelled.
+type ctxSource struct {
+	employees []Employee
+}
+
+func (c *ctxSource) Employees(ctx context.Context) ([]Employee, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return c.employees, nil
+}
+
 func TestDirectoryUnavailableWithNoCopy(t *testing.T) {
 	src := &fakeSource{err: errors.New("hr down")}
 	dir := NewDirectory(src, "wso2.com")
