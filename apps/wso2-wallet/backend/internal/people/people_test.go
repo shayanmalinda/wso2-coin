@@ -371,3 +371,18 @@ func TestBlankDomainMatchesNobody(t *testing.T) {
 		t.Errorf("Search with a blank domain returned %d people, want none", len(got))
 	}
 }
+
+func TestEmptyDirectoryIsCached(t *testing.T) {
+	src := &fakeSource{}
+	dir := NewDirectory(src, "example.com")
+	for i := 0; i < 2; i++ {
+		got, err := dir.Search(context.Background(), "anna", "")
+		if err != nil || len(got) != 0 {
+			t.Fatalf("Search on an empty directory = %+v, %v; want no results and no error", got, err)
+		}
+		waitIdle(dir)
+	}
+	if src.calls != 1 {
+		t.Errorf("fetched %d times, want 1 (empty result cached)", src.calls)
+	}
+}

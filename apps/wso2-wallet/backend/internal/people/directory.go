@@ -213,6 +213,11 @@ func (d *Directory) refresh(done chan struct{}) {
 		d.failedAt = d.now()
 		slog.Error("employee directory refresh failed", "err", err)
 	} else {
+		// nil means "never loaded" to list, so an empty answer is stored as an
+		// empty list and is cached like any other.
+		if employees == nil {
+			employees = []Employee{}
+		}
 		d.employees, d.fetchedAt, d.failedAt = employees, d.now(), time.Time{}
 	}
 	d.refreshing = nil
