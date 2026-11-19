@@ -27,8 +27,9 @@ import (
 )
 
 const (
-	owner  = "owner@wso2.com"
-	member = "member@wso2.com"
+	owner  = "owner@example.com"
+	member = "member@example.com"
+	other  = "other@example.com"
 	team   = "0xteam"
 )
 
@@ -37,8 +38,8 @@ func sharingSvc(t *testing.T) (*Service, *fakeRepo, Encryptor) {
 	enc := newEnc(t)
 	repo := &fakeRepo{}
 	seed(t, enc, repo, team, owner, "100", true)
-	seed(t, enc, repo, "0xother", "other@wso2.com", "0", true)
-	return NewService(repo, enc, InitialCoins{}, Sharing{EmailDomain: "wso2.com"}), repo, enc
+	seed(t, enc, repo, "0xother", "other@example.com", "0", true)
+	return NewService(repo, enc, InitialCoins{}, Sharing{EmailDomain: "example.com"}), repo, enc
 }
 
 func grant(t *testing.T, svc *Service, email string, level model.Role) {
@@ -57,15 +58,15 @@ func TestGrantAccessRules(t *testing.T) {
 		want   error
 	}{
 		{"read grant", owner, model.AccessRequest{Email: member, AccessLevel: model.RoleRead}, nil},
-		{"email is normalized", owner, model.AccessRequest{Email: "  Member@WSO2.com ", AccessLevel: model.RoleTransact}, nil},
-		{"non-owner cannot grant", member, model.AccessRequest{Email: "x@wso2.com", AccessLevel: model.RoleRead}, ErrForbidden},
+		{"email is normalized", owner, model.AccessRequest{Email: "  Member@EXAMPLE.com ", AccessLevel: model.RoleTransact}, nil},
+		{"non-owner cannot grant", member, model.AccessRequest{Email: "x@example.com", AccessLevel: model.RoleRead}, ErrForbidden},
 		{"outside the organization", owner, model.AccessRequest{Email: "x@gmail.com", AccessLevel: model.RoleRead}, ErrDomainNotAllowed},
-		{"lookalike domain", owner, model.AccessRequest{Email: "x@notwso2.com", AccessLevel: model.RoleRead}, ErrDomainNotAllowed},
+		{"lookalike domain", owner, model.AccessRequest{Email: "x@notexample.com", AccessLevel: model.RoleRead}, ErrDomainNotAllowed},
 		{"owner level cannot be granted", owner, model.AccessRequest{Email: member, AccessLevel: model.RoleOwner}, ErrInvalidGrant},
 		{"owner cannot grant to self", owner, model.AccessRequest{Email: owner, AccessLevel: model.RoleRead}, ErrInvalidGrant},
 		{"malformed email", owner, model.AccessRequest{Email: "not-an-email", AccessLevel: model.RoleRead}, ErrInvalidGrant},
-		{"look-alike letter in email", owner, model.AccessRequest{Email: "memb\u00e9r@wso2.com", AccessLevel: model.RoleRead}, ErrInvalidGrant},
-		{"email too long", owner, model.AccessRequest{Email: strings.Repeat("a", 250) + "@wso2.com", AccessLevel: model.RoleRead}, ErrInvalidGrant},
+		{"look-alike letter in email", owner, model.AccessRequest{Email: "memb\u00e9r@example.com", AccessLevel: model.RoleRead}, ErrInvalidGrant},
+		{"email too long", owner, model.AccessRequest{Email: strings.Repeat("a", 250) + "@example.com", AccessLevel: model.RoleRead}, ErrInvalidGrant},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -149,7 +150,7 @@ func TestMembersCannotManageWallet(t *testing.T) {
 	if _, err := svc.ListAccess(ctx, member, team); !errors.Is(err, ErrForbidden) {
 		t.Errorf("ListAccess = %v, want ErrForbidden", err)
 	}
-	if err := svc.RevokeAccess(ctx, member, team, "someone@wso2.com"); !errors.Is(err, ErrForbidden) {
+	if err := svc.RevokeAccess(ctx, member, team, "someone@example.com"); !errors.Is(err, ErrForbidden) {
 		t.Errorf("RevokeAccess(other) = %v, want ErrForbidden", err)
 	}
 }
@@ -166,19 +167,19 @@ func TestForgedGrantIsIgnored(t *testing.T) {
 		t.Fatal(err)
 	}
 	forgeries := map[string]GrantRow{
-		"made-up seal":                {Address: team, Email: "eve@wso2.com", Level: "TRANSACT", Seal: "bm90LWEtc2VhbA=="},
+		"made-up seal":                {Address: team, Email: "eve@example.com", Level: "TRANSACT", Seal: "bm90LWEtc2VhbA=="},
 		"level raised on a real seal": {Address: team, Email: member, Level: "TRANSACT", Seal: readSeal},
-		"seal copied to another user": {Address: team, Email: "eve@wso2.com", Level: "READ", Seal: readSeal},
+		"seal copied to another user": {Address: team, Email: "eve@example.com", Level: "READ", Seal: readSeal},
 		"seal copied from a wallet":   {Address: team, Email: member, Level: "TRANSACT", Seal: otherSeal},
 	}
 	// The database matches emails loosely, so a row sealed for one address can be
 	// returned for a caller with a different one. The fake repo matches by case only,
 	// so stand in for that with a row whose stored email differs from its seal.
-	looseSeal, err := enc.Encrypt(string(model.RoleRead), accessAAD(team, "someone-else@wso2.com"))
+	looseSeal, err := enc.Encrypt(string(model.RoleRead), accessAAD(team, "someone-else@example.com"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	forgeries["row found for a different email"] = GrantRow{Address: team, Email: "eve@wso2.com", Level: "READ", Seal: looseSeal}
+	forgeries["row found for a different email"] = GrantRow{Address: team, Email: "eve@example.com", Level: "READ", Seal: looseSeal}
 	for name, forged := range forgeries {
 		t.Run(name, func(t *testing.T) {
 			repo.grants = []GrantRow{forged}
@@ -232,7 +233,7 @@ func TestWalletNameNeedsSharing(t *testing.T) {
 		t.Errorf("name while shared = %q, want HR Team", info.Name)
 	}
 
-	// The name stays stored but is hidden once nobody else has access.
+	// The name goes with the last person, so the next group never sees it.
 	if err := svc.RevokeAccess(ctx, owner, team, member); err != nil {
 		t.Fatalf("RevokeAccess: %v", err)
 	}
@@ -240,8 +241,32 @@ func TestWalletNameNeedsSharing(t *testing.T) {
 		t.Errorf("name after last revoke = %q, want empty", info.Name)
 	}
 	grant(t, svc, member, model.RoleRead)
+	if info, _ := svc.WalletInfo(ctx, team); info.Name != "" {
+		t.Errorf("name after re-sharing = %q, want empty", info.Name)
+	}
+}
+
+func TestWalletNameKeptWhileSomeoneRemains(t *testing.T) {
+	ctx := context.Background()
+	svc, _, _ := sharingSvc(t)
+	grant(t, svc, member, model.RoleRead)
+	grant(t, svc, other, model.RoleRead)
+	if err := svc.Rename(ctx, owner, team, "HR Team"); err != nil {
+		t.Fatalf("Rename: %v", err)
+	}
+
+	if err := svc.LeaveWallet(ctx, member, team); err != nil {
+		t.Fatalf("LeaveWallet: %v", err)
+	}
 	if info, _ := svc.WalletInfo(ctx, team); info.Name != "HR Team" {
-		t.Errorf("name after re-sharing = %q, want HR Team", info.Name)
+		t.Errorf("name with one person left = %q, want HR Team", info.Name)
+	}
+	if err := svc.LeaveWallet(ctx, other, team); err != nil {
+		t.Fatalf("LeaveWallet: %v", err)
+	}
+	grant(t, svc, member, model.RoleRead)
+	if info, _ := svc.WalletInfo(ctx, team); info.Name != "" {
+		t.Errorf("name after everyone left = %q, want empty", info.Name)
 	}
 }
 
@@ -286,7 +311,7 @@ func TestGrantRejectsLookAlikeEmail(t *testing.T) {
 	ctx := context.Background()
 	svc, _, _ := sharingSvc(t)
 	// U+212A (Kelvin sign) lowercases to ASCII "k".
-	req := model.AccessRequest{Email: "\u212Aim@wso2.com", AccessLevel: model.RoleRead}
+	req := model.AccessRequest{Email: "\u212Aim@example.com", AccessLevel: model.RoleRead}
 	if err := svc.GrantAccess(ctx, owner, team, req); !errors.Is(err, ErrInvalidGrant) {
 		t.Errorf("GrantAccess(look-alike) = %v, want ErrInvalidGrant", err)
 	}

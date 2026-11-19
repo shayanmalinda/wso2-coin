@@ -104,6 +104,8 @@ type Repository interface {
 	Grant(ctx context.Context, address, email string) (*GrantRow, error)
 	Grants(ctx context.Context, address string) ([]GrantRow, error)
 	UpsertGrant(ctx context.Context, g GrantRow) error
+	// DeleteGrant removes a grant and, when it was the wallet's last one, the
+	// wallet's name with it. It reports whether a grant was removed.
 	DeleteGrant(ctx context.Context, address, email string) (bool, error)
 	Tx(ctx context.Context, fn func(Queries) error) error
 }
@@ -291,7 +293,13 @@ func (r *mysqlRepository) UpsertGrant(ctx context.Context, g GrantRow) error {
 }
 
 func (r *mysqlRepository) DeleteGrant(ctx context.Context, address, email string) (bool, error) {
-	res, err := r.db.ExecContext(ctx,
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, fmt.Errorf("delete grant: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	res, err := tx.ExecContext(ctx,
 		"DELETE FROM wallet_access WHERE wallet_address = ? AND user_email = ?", address, email)
 	if err != nil {
 		return false, fmt.Errorf("delete grant: %w", err)
@@ -300,7 +308,21 @@ func (r *mysqlRepository) DeleteGrant(ctx context.Context, address, email string
 	if err != nil {
 		return false, fmt.Errorf("delete grant: %w", err)
 	}
-	return n > 0, nil
+	if n == 0 {
+		return false, nil
+	}
+	// A name belongs to the group the wallet was shared with. Once the last person
+	// is gone it is dropped, so it cannot reappear for whoever is added next.
+	const clearName = `UPDATE user_wallet SET wallet_name = NULL WHERE wallet_address = ?
+		AND wallet_name IS NOT NULL
+		AND NOT EXISTS (SELECT 1 FROM wallet_access a WHERE a.wallet_address = ?)`
+	if _, err := tx.ExecContext(ctx, clearName, address, address); err != nil {
+		return false, fmt.Errorf("clear wallet name: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("delete grant: %w", err)
+	}
+	return true, nil
 }
 
 func (r *mysqlRepository) Tx(ctx context.Context, fn func(Queries) error) error {

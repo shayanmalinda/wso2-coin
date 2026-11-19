@@ -87,7 +87,10 @@ function Home() {
       }
 
       const wallets = await getUserWalletAddresses();
-      if (!wallets || wallets.length === 0) {
+      // Someone who only has wallets shared with them still needs their own, so
+      // onboarding runs until they own one.
+      const ownsWallet = wallets?.some((w) => w.role === WALLET_ROLE.OWNER);
+      if (!ownsWallet) {
         // Keep the loading state until the redirect unmounts this page, so the
         // wallet UI never flashes before create-wallet.
         navigate("/create-wallet", { replace: true });

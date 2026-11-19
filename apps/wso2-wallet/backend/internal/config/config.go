@@ -21,9 +21,11 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -136,7 +138,11 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	companyDomain := envOrDefault("COMPANY_EMAIL_DOMAIN", defaultCompanyEmailDomain)
+	companyDomain := strings.TrimSpace(envOrDefault("COMPANY_EMAIL_DOMAIN", defaultCompanyEmailDomain))
+	if old := os.Getenv("INITIAL_COINS_EMAIL_DOMAIN"); old != "" {
+		slog.Warn("INITIAL_COINS_EMAIL_DOMAIN is no longer read; set COMPANY_EMAIL_DOMAIN instead",
+			"ignoredValue", old, "companyEmailDomain", companyDomain)
+	}
 	initialCoins, err := loadInitialCoins(companyDomain)
 	if err != nil {
 		return Config{}, err

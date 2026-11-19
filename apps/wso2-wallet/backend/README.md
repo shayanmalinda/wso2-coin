@@ -80,7 +80,8 @@ team can run one wallet together.
 - **Owner only:** name the wallet, manage access and set it as their default wallet.
 
 A wallet can be named only while it is shared with at least one other person, and the
-name is shown only while that holds. Each transfer records who made it; the sending
+name is shown only while that holds. Removing the last person also removes the name, so
+it cannot reappear when the wallet is shared again. Each transfer records who made it; the sending
 wallet's history shows it.
 
 When the HR entity is configured (`PEOPLE_API_URL`), the owner can pick a person by

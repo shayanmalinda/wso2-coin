@@ -41,24 +41,24 @@ func (f *fakeSource) Employees(context.Context) ([]Employee, error) {
 
 func staff() []Employee {
 	return []Employee{
-		{FirstName: "Anna", LastName: "Perera", Email: "anna@wso2.com"},
-		{FirstName: "Joanna", LastName: "Silva", Email: "Joanna@wso2.com", Thumbnail: "https://img/j.png"},
-		{FirstName: "Sam", LastName: "Annandale", Email: "sam@wso2.com"},
+		{FirstName: "Anna", LastName: "Perera", Email: "anna@example.com"},
+		{FirstName: "Joanna", LastName: "Silva", Email: "Joanna@example.com", Thumbnail: "https://img/j.png"},
+		{FirstName: "Sam", LastName: "Annandale", Email: "sam@example.com"},
 		{FirstName: "Anne", LastName: "Outside", Email: "anne@partner.com"},
-		{FirstName: "Me", LastName: "Annable", Email: "me@wso2.com"},
+		{FirstName: "Me", LastName: "Annable", Email: "me@example.com"},
 	}
 }
 
 func TestSearchRanksPrefixMatchesAndFilters(t *testing.T) {
-	dir := NewDirectory(&fakeSource{employees: staff()}, "wso2.com")
-	got, err := dir.Search(context.Background(), "  ANN ", "ME@wso2.com")
+	dir := NewDirectory(&fakeSource{employees: staff()}, "example.com")
+	got, err := dir.Search(context.Background(), "  ANN ", "ME@example.com")
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
 	// A first-name match (Anna) comes before a last-name match (Sam Annandale), and
 	// both before a match in the middle of a name (Joanna). The partner-domain
 	// person and the caller are left out.
-	want := []string{"anna@wso2.com", "sam@wso2.com", "joanna@wso2.com"}
+	want := []string{"anna@example.com", "sam@example.com", "joanna@example.com"}
 	if len(got) != len(want) {
 		t.Fatalf("got %d results %+v, want %d", len(got), got, len(want))
 	}
@@ -74,7 +74,7 @@ func TestSearchRanksPrefixMatchesAndFilters(t *testing.T) {
 
 func TestSearchNeedsMinimumLength(t *testing.T) {
 	src := &fakeSource{employees: staff()}
-	dir := NewDirectory(src, "wso2.com")
+	dir := NewDirectory(src, "example.com")
 	got, err := dir.Search(context.Background(), "an", "")
 	if err != nil || len(got) != 0 {
 		t.Fatalf("short query = %+v, %v; want no results", got, err)
@@ -87,9 +87,9 @@ func TestSearchNeedsMinimumLength(t *testing.T) {
 func TestSearchCapsResults(t *testing.T) {
 	var many []Employee
 	for i := 0; i < 30; i++ {
-		many = append(many, Employee{FirstName: "Test", LastName: fmt.Sprint(i), Email: fmt.Sprintf("test%d@wso2.com", i)})
+		many = append(many, Employee{FirstName: "Test", LastName: fmt.Sprint(i), Email: fmt.Sprintf("test%d@example.com", i)})
 	}
-	dir := NewDirectory(&fakeSource{employees: many}, "wso2.com")
+	dir := NewDirectory(&fakeSource{employees: many}, "example.com")
 	got, err := dir.Search(context.Background(), "test", "")
 	if err != nil || len(got) != MaxResults {
 		t.Fatalf("got %d results, %v; want %d", len(got), err, MaxResults)
@@ -98,7 +98,7 @@ func TestSearchCapsResults(t *testing.T) {
 
 func TestDirectoryCachesAndSurvivesOutage(t *testing.T) {
 	src := &fakeSource{employees: staff()}
-	dir := NewDirectory(src, "wso2.com")
+	dir := NewDirectory(src, "example.com")
 	now := time.Now()
 	dir.now = func() time.Time { return now }
 	ctx := context.Background()
@@ -131,7 +131,7 @@ func TestDirectoryCachesAndSurvivesOutage(t *testing.T) {
 // A caller who gives up mid-refresh must not fail the refresh for everyone else.
 func TestRefreshIgnoresCallerCancellation(t *testing.T) {
 	src := &ctxSource{employees: staff()}
-	dir := NewDirectory(src, "wso2.com")
+	dir := NewDirectory(src, "example.com")
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
@@ -162,7 +162,7 @@ func waitIdle(d *Directory) {
 // without waiting for it.
 func TestStaleCopyServedWhileRefreshRuns(t *testing.T) {
 	src := &blockingSource{employees: staff(), release: make(chan struct{}), started: make(chan struct{}, 4)}
-	dir := NewDirectory(src, "wso2.com")
+	dir := NewDirectory(src, "example.com")
 	now := time.Now()
 	dir.now = func() time.Time { return now }
 	dir.employees, dir.fetchedAt = staff(), now.Add(-cacheTTL-time.Second)
@@ -209,7 +209,7 @@ func (c *ctxSource) Employees(ctx context.Context) ([]Employee, error) {
 
 func TestDirectoryUnavailableWithNoCopy(t *testing.T) {
 	src := &fakeSource{err: errors.New("hr down")}
-	dir := NewDirectory(src, "wso2.com")
+	dir := NewDirectory(src, "example.com")
 	for i := 0; i < 2; i++ {
 		if _, err := dir.Search(context.Background(), "anna", ""); !errors.Is(err, ErrUnavailable) {
 			t.Fatalf("Search = %v, want ErrUnavailable", err)
@@ -252,9 +252,9 @@ func TestClientPagesAndReusesToken(t *testing.T) {
 		page := []map[string]any{}
 		if body.Variables.Offset == 0 {
 			page = []map[string]any{
-				{"workEmail": "a@wso2.com", "firstName": "A", "lastName": "One", "employeeThumbnail": nil},
+				{"workEmail": "a@example.com", "firstName": "A", "lastName": "One", "employeeThumbnail": nil},
 				{"workEmail": "  ", "firstName": "No", "lastName": "Email"},
-				{"workEmail": "b@wso2.com", "firstName": "B", "lastName": "Two", "employeeThumbnail": "https://img/b.png"},
+				{"workEmail": "b@example.com", "firstName": "B", "lastName": "Two", "employeeThumbnail": "https://img/b.png"},
 			}
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"employees": page}})
@@ -267,7 +267,7 @@ func TestClientPagesAndReusesToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Employees: %v", err)
 	}
-	if len(got) != 2 || got[0].Email != "a@wso2.com" || got[1].Thumbnail != "https://img/b.png" {
+	if len(got) != 2 || got[0].Email != "a@example.com" || got[1].Thumbnail != "https://img/b.png" {
 		t.Fatalf("employees = %+v", got)
 	}
 	if tokenCalls.Load() != 1 || queryCalls.Load() != 2 {
@@ -322,12 +322,12 @@ func TestClientKeepsPagingPastAnAllFilteredPage(t *testing.T) {
 				page = append(page, map[string]any{"workEmail": "", "firstName": "No", "lastName": "Email"})
 			}
 		case pageSize:
-			page = append(page, map[string]any{"workEmail": "late@wso2.com", "firstName": "Late", "lastName": "Page"})
+			page = append(page, map[string]any{"workEmail": "late@example.com", "firstName": "Late", "lastName": "Page"})
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"employees": page}})
 	}, okToken)
 	got, err := c.Employees(context.Background())
-	if err != nil || len(got) != 1 || got[0].Email != "late@wso2.com" {
+	if err != nil || len(got) != 1 || got[0].Email != "late@example.com" {
 		t.Fatalf("Employees = %+v, %v; want the person on the second page", got, err)
 	}
 }
@@ -355,5 +355,19 @@ func TestClientDoesNotFollowRedirects(t *testing.T) {
 	}
 	if leaked.Load() {
 		t.Error("the redirect was followed")
+	}
+}
+
+func TestBlankDomainMatchesNobody(t *testing.T) {
+	d := NewDirectory(&fakeSource{employees: staff()}, "  ")
+	if d.InCompany("anna@example.com") {
+		t.Error("InCompany with a blank domain = true, want false")
+	}
+	got, err := d.Search(context.Background(), "ann", "")
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("Search with a blank domain returned %d people, want none", len(got))
 	}
 }

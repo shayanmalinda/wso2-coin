@@ -110,7 +110,7 @@ func (d *Directory) Search(ctx context.Context, query, exclude string) ([]model.
 	var matches []match
 	for _, e := range employees {
 		email := strings.ToLower(e.Email)
-		if email == exclude || !strings.HasSuffix(email, "@"+d.domain) {
+		if email == exclude || !d.InCompany(email) {
 			continue
 		}
 		last := strings.ToLower(e.LastName)
@@ -142,8 +142,12 @@ func (d *Directory) Search(ctx context.Context, query, exclude string) ([]model.
 	return out, nil
 }
 
-// InCompany reports whether email belongs to the directory's organization.
+// InCompany reports whether email belongs to the directory's organization. With no
+// domain configured nobody does, since a bare "@" suffix would match every email.
 func (d *Directory) InCompany(email string) bool {
+	if d.domain == "" {
+		return false
+	}
 	return strings.HasSuffix(strings.ToLower(strings.TrimSpace(email)), "@"+d.domain)
 }
 

@@ -79,6 +79,11 @@ import {
 } from "../../services/wallet.service";
 
 const MAX_NAME_LENGTH = 50;
+
+// The backend counts characters, not UTF-16 units, so an emoji counts as one here
+// too. The input's own maxLength would count it as two.
+const clampName = (value) =>
+  Array.from(value).slice(0, MAX_NAME_LENGTH).join("");
 // The backend ignores shorter searches; match it so no request is wasted.
 const MIN_SEARCH_LENGTH = 3;
 const SEARCH_DELAY_MS = 300;
@@ -495,9 +500,8 @@ function WalletAccessModal({ open, wallet, onClose, canShare = true }) {
                 id="wallet-access-name"
                 className="wallet-access-input"
                 value={name}
-                maxLength={MAX_NAME_LENGTH}
                 placeholder={WALLET_NAME_PLACEHOLDER}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => setName(clampName(e.target.value))}
                 disabled={!isShared || busy === "name"}
               />
               <button
